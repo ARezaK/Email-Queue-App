@@ -17,12 +17,14 @@ class QueuedEmailAdmin(admin.ModelAdmin):
         "to_email",
         "status_badge",
         "scheduled_for",
+        "failure_reason",
         "sent_at",
         "attempt_count",
         "batch_id",
     ]
     list_filter = ["status", "email_type", "created_at", "scheduled_for"]
     search_fields = ["to_email", "user__email", "user__username", "batch_id"]
+    autocomplete_fields = ["user"]
     readonly_fields = [
         "created_at",
         "updated_at",
