@@ -156,6 +156,47 @@ EMAIL_QUEUE_BASE_URL = "https://your-domain.com"
 - Future emails in that category are skipped (`status="skipped"`).
 - Other categories continue to send normally.
 
+### 7. Unsubscribe Examples
+
+```python
+# settings.py
+from email_queue.types import EmailTypeConfig
+
+EMAIL_QUEUE_TYPES = {
+    "promo_summer_sale": EmailTypeConfig(
+        subject="Summer sale is live",
+        category="marketing",
+        require_not_unsubscribed=True,
+    ),
+    "new_case_announcement": EmailTypeConfig(
+        subject="New case: {{ case_title }}",
+        category="notification",
+        require_not_unsubscribed=True,
+    ),
+    "password_reset": EmailTypeConfig(
+        subject="Reset your password",
+        category="account",
+        require_not_unsubscribed=False,  # always send transactional resets
+    ),
+}
+```
+
+```python
+# If user unsubscribed from marketing, this will be skipped.
+queue_email(
+    to_email=user.email,
+    email_type="promo_summer_sale",
+    context={"discount_code": "SUMMER25"},
+)
+
+# This still sends because category is different ("notification").
+queue_email(
+    to_email=user.email,
+    email_type="new_case_announcement",
+    context={"case_title": "Acute Chest Pain"},
+)
+```
+
 ## Admin Interface
 
 Access at: `/admin/email_queue/queuedemail/`
