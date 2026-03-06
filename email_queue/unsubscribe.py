@@ -120,7 +120,6 @@ def build_unsubscribe_url(token: str) -> str:
 def add_unsubscribe_footer(text_body: str, html_body: str | None, email: str, category: str) -> tuple[str, str | None]:
     token = generate_unsubscribe_token(email, category)
     unsubscribe_url = build_unsubscribe_url(token)
-    category_label = normalize_category(category).replace("_", " ")
 
     text_footer = (
         "\n\n---\n"
@@ -132,7 +131,6 @@ def add_unsubscribe_footer(text_body: str, html_body: str | None, email: str, ca
         return text_with_footer, html_body
 
     safe_url = escape(unsubscribe_url)
-    safe_category_label = escape(category_label)
     html_footer = (
         '<hr style="margin-top:24px;border:none;border-top:1px solid #d0d0d0;">'
         '<p style="font-size:12px;line-height:1.5;color:#666;margin-top:12px;">'
