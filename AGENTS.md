@@ -6,10 +6,11 @@
 - `sending.py` and `rendering.py` for delivery and template rendering
 - `models.py` for `QueuedEmail` and related DB entities
 - `middleware.py` for click tracking
+- `unsubscribe.py`, `views.py`, and `urls.py` for category unsubscribe links and handling
 - `types.py` and `schemas.py` for email-type config and context validation
 
 Operational code lives in `email_queue/management/commands/send_queued_emails.py`.  
-Tests are in `email_queue/tests/` with one module per behavior area (API, rendering, UTM, click tracking, command concurrency).  
+Tests are in `email_queue/tests/` with one module per behavior area (API, rendering, UTM, click tracking, unsubscribe flow, command concurrency).  
 Schema changes belong in `email_queue/migrations/`. Package metadata is in `setup.py`.
 
 ## Build, Test, and Development Commands

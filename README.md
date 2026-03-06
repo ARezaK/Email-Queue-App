@@ -58,8 +58,8 @@ python manage.py send_queued_emails
 # Custom rate limit
 python manage.py send_queued_emails --rate-limit=20
 
-# More aggressive retries
-python manage.py send_queued_emails --max-retries=5 --retry-delay=60
+# Retry failed emails sooner
+python manage.py send_queued_emails --retry-delay=60
 ```
 
 ### Set Up Cron
@@ -148,6 +148,14 @@ EMAIL_QUEUE_BASE_URL = "https://your-domain.com"
 # falls back to SITE_URL automatically if neither is set
 ```
 
+### 6. Category Unsubscribe Behavior
+
+- Set `category` per email type in `EmailTypeConfig`.
+- Every send includes an unsubscribe link for that category.
+- Clicking the link records preference in `EmailUnsubscribe`.
+- Future emails in that category are skipped (`status="skipped"`).
+- Other categories continue to send normally.
+
 ## Admin Interface
 
 Access at: `/admin/email_queue/queuedemail/`
@@ -167,6 +175,7 @@ Access at: `/admin/email_queue/queuedemail/`
 ### Models
 
 - `QueuedEmail`: Main model tracking all queued emails
+- `EmailUnsubscribe`: Per-email, per-category unsubscribe preferences
 
 ### Configuration
 
