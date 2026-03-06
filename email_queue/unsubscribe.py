@@ -117,6 +117,7 @@ def build_unsubscribe_url(token: str) -> str:
     return f"{base_url}{path}"
 
 
+def add_unsubscribe_footer(text_body: str, html_body: str | None, email: str, category: str) -> tuple[str, str | None]:
     token = generate_unsubscribe_token(email, category)
     unsubscribe_url = build_unsubscribe_url(token)
     category_label = normalize_category(category).replace("_", " ")
