@@ -6,6 +6,12 @@ from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 
 from .rendering import render_email
+from .unsubscribe import (
+    add_unsubscribe_footer,
+    get_email_category,
+    is_unsubscribed,
+    should_enforce_unsubscribe,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +29,6 @@ def send_queued_email(queued_email) -> bool:
     Returns:
         True if sent successfully, False otherwise
     """
-    # Avoid circular import
-    from .models import QueuedEmail
-
     # Update status to 'sending' to prevent concurrent processing
     queued_email.status = "sending"
     queued_email.attempt_count += 1
@@ -49,6 +52,18 @@ def send_queued_email(queued_email) -> bool:
             queued_email.failure_reason = "Email expired"
             queued_email.save(update_fields=["status", "failure_reason"])
             logger.info(f"Skipped expired email {queued_email.id} ({queued_email.email_type})")
+            return False
+
+        unsubscribe_enforced = should_enforce_unsubscribe(queued_email.email_type)
+        unsubscribe_category = get_email_category(queued_email.email_type)
+
+        if unsubscribe_enforced and is_unsubscribed(queued_email.to_email, unsubscribe_category):
+            queued_email.status = "skipped"
+            queued_email.failure_reason = f"Recipient unsubscribed from {unsubscribe_category.replace('_', ' ')} emails"
+            queued_email.save(update_fields=["status", "failure_reason"])
+            logger.info(
+                f"Skipped email {queued_email.id} - recipient unsubscribed from {unsubscribe_category} emails"
+            )
             return False
 
         # Check user eligibility (if we can find a user with this email)
@@ -81,6 +96,13 @@ def send_queued_email(queued_email) -> bool:
 
         # Render email with UTM tracking
         rendered = render_email(queued_email.email_type, queued_email.context, email_id=queued_email.id)
+        if unsubscribe_enforced:
+            rendered["text_body"], rendered["html_body"] = add_unsubscribe_footer(
+                rendered["text_body"],
+                rendered["html_body"],
+                queued_email.to_email,
+                unsubscribe_category,
+            )
 
         # Create and send email
         from_email = getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER)

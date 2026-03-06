@@ -14,6 +14,8 @@ from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 
+from .models import EmailClick, QueuedEmail
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,8 +38,6 @@ def _record_email_click_async(
 
     This function is called in a separate thread to avoid blocking the request.
     """
-    from .models import EmailClick, QueuedEmail
-
     try:
         # Verify email exists
         queued_email = QueuedEmail.objects.filter(id=email_id).first()

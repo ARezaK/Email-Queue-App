@@ -13,6 +13,7 @@ Centralized email queue management for Django with scheduling, tracking, retry l
 - **Batch Management**: Group and cancel emails from scripts
 - **Admin Interface**: Preview, send, cancel emails from Django admin
 - **Audit Trail**: Track all sends, failures, and attempts
+- **Category Unsubscribes**: Per-category unsubscribe links (e.g., marketing vs notification)
 - **UTM Tracking**: Automatic UTM parameters on all HTML email links for campaign analytics
 
 ## Quick Start
@@ -77,6 +78,7 @@ In `email_queue/types.py`:
 ```python
 EMAIL_TYPES["new_email_type"] = EmailTypeConfig(
     subject="Your subject with {{ variable }}",
+    category="marketing",  # or "notification", etc.
     allow_inactive=False,
     require_verified_email=True,
 )
@@ -126,6 +128,24 @@ queue_email(
     email_type="new_email_type",
     context={"variable": "test"},
 )
+```
+
+### 5. Wire Unsubscribe URLs
+
+Include app URLs in your project:
+
+```python
+urlpatterns = [
+    path("", include("email_queue.urls")),
+]
+```
+
+Optional setting for absolute links in email footers:
+
+```python
+EMAIL_QUEUE_BASE_URL = "https://your-domain.com"
+# or EMAIL_QUEUE_BASED_URL (preferred alias)
+# falls back to SITE_URL automatically if neither is set
 ```
 
 ## Admin Interface

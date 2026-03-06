@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
-from email_queue.middleware import EmailClickTrackingMiddleware, get_client_ip
+from email_queue.middleware import _record_email_click_async, EmailClickTrackingMiddleware, get_client_ip
 from email_queue.models import EmailClick, QueuedEmail
 
 
@@ -167,8 +167,6 @@ class EmailClickTrackingMiddlewareTest(TestCase):
 
     def test_click_recorded_in_database(self):
         """Test that click is actually recorded in database"""
-        from email_queue.middleware import _record_email_click_async
-
         # Call the recording function directly (synchronously) instead of through middleware
         # This avoids threading issues in tests
         _record_email_click_async(
@@ -191,8 +189,6 @@ class EmailClickTrackingMiddlewareTest(TestCase):
 
     def test_click_recorded_for_anonymous_user(self):
         """Test that anonymous clicks are recorded"""
-        from email_queue.middleware import _record_email_click_async
-
         # Call directly without threading
         _record_email_click_async(
             email_id=self.queued_email.id,
@@ -208,8 +204,6 @@ class EmailClickTrackingMiddlewareTest(TestCase):
 
     def test_handles_nonexistent_email_gracefully(self):
         """Test that tracking handles nonexistent email IDs gracefully"""
-        from email_queue.middleware import _record_email_click_async
-
         # Should not raise exception
         _record_email_click_async(
             email_id=99999,
@@ -224,8 +218,6 @@ class EmailClickTrackingMiddlewareTest(TestCase):
 
     def test_truncates_long_user_agent(self):
         """Test that long user agents are truncated"""
-        from email_queue.middleware import _record_email_click_async
-
         _record_email_click_async(
             email_id=self.queued_email.id,
             user_id=self.user.id,
@@ -239,8 +231,6 @@ class EmailClickTrackingMiddlewareTest(TestCase):
 
     def test_truncates_long_landing_url(self):
         """Test that long URLs are truncated"""
-        from email_queue.middleware import _record_email_click_async
-
         long_url = "/page/" + "a" * 1000
         _record_email_click_async(
             email_id=self.queued_email.id,

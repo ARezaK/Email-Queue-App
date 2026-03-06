@@ -1,9 +1,11 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
+from pydantic import ValidationError
 
 from email_queue.api import queue_email
-from email_queue.models import QueuedEmail
+from email_queue.models import EmailUnsubscribe, QueuedEmail
+from email_queue.unsubscribe import get_email_category
 
 
 class QueueEmailAPITest(TestCase):
@@ -82,8 +84,6 @@ class QueueEmailAPITest(TestCase):
 
     def test_queue_email_validation_error(self):
         """Test that invalid context raises ValidationError"""
-        from pydantic import ValidationError
-
         with self.assertRaises(ValidationError):
             queue_email(
                 to_email=self.user.email,
@@ -110,3 +110,36 @@ class QueueEmailAPITest(TestCase):
         )
 
         self.assertEqual(qe.batch_id, "test_batch_123")
+
+    def test_queue_email_skips_unsubscribed_category(self):
+        """Test queuing skips users unsubscribed from the email category"""
+        EmailUnsubscribe.objects.create(
+            user=self.user,
+            email=self.user.email.lower(),
+            category=get_email_category("password_reset"),
+        )
+
+        qe = queue_email(
+            to_email=self.user.email,
+            email_type="password_reset",
+            context={"user_name": "Test", "reset_link": "http://example.com", "expires_hours": 24},
+        )
+
+        self.assertEqual(qe.status, "skipped")
+        self.assertIn("unsubscribed", qe.failure_reason.lower())
+
+    def test_queue_email_allows_other_categories(self):
+        """Test category-specific unsubscribe does not block other categories"""
+        EmailUnsubscribe.objects.create(
+            user=self.user,
+            email=self.user.email.lower(),
+            category="marketing",
+        )
+
+        qe = queue_email(
+            to_email=self.user.email,
+            email_type="password_reset",
+            context={"user_name": "Test", "reset_link": "http://example.com", "expires_hours": 24},
+        )
+
+        self.assertEqual(qe.status, "queued")

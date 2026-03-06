@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
@@ -93,3 +92,30 @@ class EmailClick(models.Model):
     def __str__(self):
         user_str = self.user.username if self.user else "Anonymous"
         return f"{user_str} clicked {self.queued_email.email_type} at {self.clicked_at}"
+
+
+class EmailUnsubscribe(models.Model):
+    """
+    Track unsubscribe preferences by email category.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="email_unsubscribes")
+    email = models.CharField(max_length=254, db_index=True)
+    category = models.CharField(max_length=50, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    unsubscribed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "email_queue_email_unsubscribe"
+        verbose_name = "Email Unsubscribe"
+        verbose_name_plural = "Email Unsubscribes"
+        ordering = ["-unsubscribed_at"]
+        indexes = [
+            models.Index(fields=["category", "-unsubscribed_at"], name="emailunsub_cat_time_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["email", "category"], name="emailunsub_email_category_uniq"),
+        ]
+
+    def __str__(self):
+        return f"{self.email} unsubscribed from {self.category}"

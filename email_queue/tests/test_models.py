@@ -1,8 +1,9 @@
 from django.contrib.auth.models import User
+from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 
-from email_queue.models import QueuedEmail
+from email_queue.models import EmailUnsubscribe, QueuedEmail
 
 
 class QueuedEmailModelTest(TestCase):
@@ -37,8 +38,6 @@ class QueuedEmailModelTest(TestCase):
         )
 
         # Trying to create duplicate with same to_email, email_type, scheduled_for, and context should raise IntegrityError
-        from django.db import IntegrityError
-
         with self.assertRaises(IntegrityError):
             QueuedEmail.objects.create(
                 user=self.user,
@@ -60,3 +59,11 @@ class QueuedEmailModelTest(TestCase):
         self.assertIn("test_email", str(qe))
         self.assertIn("test@example.com", str(qe))
         self.assertIn("queued", str(qe))
+
+    def test_unsubscribe_unique_per_category(self):
+        """Same email can unsubscribe per category, but not duplicate same category"""
+        EmailUnsubscribe.objects.create(user=self.user, email=self.user.email.lower(), category="marketing")
+        EmailUnsubscribe.objects.create(user=self.user, email=self.user.email.lower(), category="notification")
+
+        with self.assertRaises(IntegrityError):
+            EmailUnsubscribe.objects.create(user=self.user, email=self.user.email.lower(), category="marketing")

@@ -8,6 +8,7 @@ from django.test import TransactionTestCase
 from django.utils import timezone
 
 from email_queue.models import QueuedEmail
+from email_queue.sending import send_queued_email as original_send
 
 
 class SendQueuedEmailsConcurrencyTest(TransactionTestCase):
@@ -26,8 +27,6 @@ class SendQueuedEmailsConcurrencyTest(TransactionTestCase):
         ]
 
     def _run_command(self, sent_ids, barrier):
-        from email_queue.sending import send_queued_email as original_send
-
         try:
 
             def slow_send(queued_email):

@@ -2,13 +2,13 @@ import logging
 from datetime import datetime
 
 from django.conf import settings
-from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import QueuedEmail
 from .schemas import validate_email_context
 from .sending import send_queued_email
+from .unsubscribe import get_email_category, is_unsubscribed, should_enforce_unsubscribe
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,11 @@ def queue_email(
     if scheduled_for is None:
         scheduled_for = timezone.now()
 
+    category = get_email_category(email_type)
+    unsubscribe_enforced = should_enforce_unsubscribe(email_type)
+    is_recipient_unsubscribed = unsubscribe_enforced and is_unsubscribed(to_email, category)
+    unsubscribe_reason = f"Recipient unsubscribed from {category.replace('_', ' ')} emails"
+
     # Try to create email (idempotent - returns existing if duplicate)
     try:
         with transaction.atomic():
@@ -78,11 +83,17 @@ def queue_email(
                 email_type=email_type,
                 context=validated_context,
                 scheduled_for=scheduled_for,
-                status="queued",
+                status="skipped" if is_recipient_unsubscribed else "queued",
                 batch_id=batch_id or "",
                 expires_at=expires_at,
+                failure_reason=unsubscribe_reason if is_recipient_unsubscribed else "",
             )
-            logger.info(f"Queued email {queued_email.id} ({email_type}) to {to_email}")
+            if is_recipient_unsubscribed:
+                logger.info(
+                    f"Skipped queueing email {queued_email.id} ({email_type}) to {to_email}: {unsubscribe_reason}"
+                )
+            else:
+                logger.info(f"Queued email {queued_email.id} ({email_type}) to {to_email}")
     except IntegrityError:
         # Duplicate - return existing
         queued_email = QueuedEmail.objects.get(
@@ -91,10 +102,16 @@ def queue_email(
             scheduled_for=scheduled_for,
             context=validated_context,
         )
+        if is_recipient_unsubscribed and queued_email.status in ["queued", "failed"]:
+            queued_email.status = "skipped"
+            queued_email.failure_reason = unsubscribe_reason
+            queued_email.save(update_fields=["status", "failure_reason"])
         logger.info(f"Email already queued: {queued_email.id} ({email_type}) to {to_email}")
 
     # Send immediately if requested
-    if send_now:
+    # Only immediate-send freshly queued rows. Failed rows are retried
+    # by the worker command based on retry_delay/max_attempt rules.
+    if send_now and queued_email.status == "queued":
         logger.info(f"Sending email {queued_email.id} immediately (send_now=True)")
         send_queued_email(queued_email)
 

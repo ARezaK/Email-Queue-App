@@ -1,0 +1,6 @@
+*.egg-info/
+.idea/vcs.xml
+.idea/misc.xml
+.idea/inspectionProfiles/Project_Default.xml
+.idea/inspectionProfiles/profiles_settings.xml
+.idea/Email-Queue-App.iml

@@ -4,9 +4,10 @@ from django.shortcuts import render
 from django.urls import path
 from django.utils.html import format_html
 
-from .models import EmailClick, QueuedEmail
+from .models import EmailClick, EmailUnsubscribe, QueuedEmail
 from .rendering import render_email
 from .sending import send_queued_email
+from .unsubscribe import add_unsubscribe_footer, get_email_category, should_enforce_unsubscribe
 
 
 @admin.register(QueuedEmail)
@@ -146,6 +147,13 @@ class QueuedEmailAdmin(admin.ModelAdmin):
         try:
             # Render with UTM parameters to show what will actually be sent
             rendered = render_email(queued_email.email_type, queued_email.context, email_id=queued_email.id)
+            if should_enforce_unsubscribe(queued_email.email_type):
+                rendered["text_body"], rendered["html_body"] = add_unsubscribe_footer(
+                    rendered["text_body"],
+                    rendered["html_body"],
+                    queued_email.to_email,
+                    get_email_category(queued_email.email_type),
+                )
 
             context = {
                 "queued_email": queued_email,
@@ -227,3 +235,12 @@ class EmailClickAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Allow deletion for cleanup"""
         return True
+
+
+@admin.register(EmailUnsubscribe)
+class EmailUnsubscribeAdmin(admin.ModelAdmin):
+    list_display = ["id", "email", "category", "user", "unsubscribed_at"]
+    list_filter = ["category", "unsubscribed_at"]
+    search_fields = ["email", "user__email", "user__username", "category"]
+    readonly_fields = ["created_at", "unsubscribed_at"]
+    date_hierarchy = "unsubscribed_at"
