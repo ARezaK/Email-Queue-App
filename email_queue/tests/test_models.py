@@ -3,7 +3,7 @@ from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 
-from email_queue.models import EmailUnsubscribe, QueuedEmail
+from email_queue.models import EmailReplyEvent, EmailUnsubscribe, QueuedEmail
 
 
 class QueuedEmailModelTest(TestCase):
@@ -67,3 +67,35 @@ class QueuedEmailModelTest(TestCase):
 
         with self.assertRaises(IntegrityError):
             EmailUnsubscribe.objects.create(user=self.user, email=self.user.email.lower(), category="marketing")
+
+
+class EmailReplyEventModelTest(TestCase):
+    def test_message_id_must_be_unique(self):
+        EmailReplyEvent.objects.create(
+            message_id="provider-123",
+            from_email="user@example.com",
+            to_email="email-reply+token@example.com",
+            action="ignored_not_enabled",
+            raw_payload={"message_id": "provider-123"},
+        )
+
+        with self.assertRaises(IntegrityError):
+            EmailReplyEvent.objects.create(
+                message_id="provider-123",
+                from_email="other@example.com",
+                to_email="email-reply+token@example.com",
+                action="ignored_not_enabled",
+                raw_payload={"message_id": "provider-123"},
+            )
+
+    def test_string_representation_includes_action_and_message_id(self):
+        event = EmailReplyEvent.objects.create(
+            message_id="provider-xyz",
+            from_email="user@example.com",
+            to_email="email-reply+token@example.com",
+            action="category_stop",
+            raw_payload={"message_id": "provider-xyz"},
+        )
+
+        self.assertIn("provider-xyz", str(event))
+        self.assertIn("category_stop", str(event))

@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.urls import path
 from django.utils.html import format_html
 
-from .models import EmailClick, EmailUnsubscribe, QueuedEmail
+from .models import EmailClick, EmailReplyEvent, EmailUnsubscribe, QueuedEmail
 from .rendering import render_email
 from .sending import send_queued_email
 from .unsubscribe import add_unsubscribe_footer, get_email_category, should_enforce_unsubscribe
@@ -244,3 +244,36 @@ class EmailUnsubscribeAdmin(admin.ModelAdmin):
     search_fields = ["email", "user__email", "user__username", "category"]
     readonly_fields = ["created_at", "unsubscribed_at"]
     date_hierarchy = "unsubscribed_at"
+
+
+@admin.register(EmailReplyEvent)
+class EmailReplyEventAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "message_id",
+        "action",
+        "token_email",
+        "token_email_type",
+        "token_category",
+        "cancelled_count",
+        "processed_at",
+    ]
+    list_filter = ["action", "token_category", "token_email_type", "processed_at"]
+    search_fields = ["message_id", "from_email", "to_email", "token_email", "subject"]
+    readonly_fields = [
+        "message_id",
+        "from_email",
+        "to_email",
+        "subject",
+        "token_email",
+        "token_email_type",
+        "token_category",
+        "action",
+        "cancelled_count",
+        "processed_at",
+        "raw_payload",
+    ]
+    date_hierarchy = "processed_at"
+
+    def has_add_permission(self, request):
+        return False

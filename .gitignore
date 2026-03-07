@@ -4,3 +4,5 @@
 .idea/inspectionProfiles/Project_Default.xml
 .idea/inspectionProfiles/profiles_settings.xml
 .idea/Email-Queue-App.iml
+*.pyc
+.env

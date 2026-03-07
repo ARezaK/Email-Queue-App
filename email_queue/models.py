@@ -119,3 +119,49 @@ class EmailUnsubscribe(models.Model):
 
     def __str__(self):
         return f"{self.email} unsubscribed from {self.category}"
+
+
+class EmailReplyEvent(models.Model):
+    """
+    Audit trail for inbound reply-stop webhook events.
+
+    message_id is unique to make processing idempotent.
+    """
+
+    ACTION_IGNORED_AUTO_REPLY = "ignored_auto_reply"
+    ACTION_IGNORED_NOT_ENABLED = "ignored_not_enabled"
+    ACTION_CATEGORY_STOP = "category_stop"
+    ACTION_EMAIL_TYPE_STOP = "email_type_stop"
+    ACTION_DUPLICATE = "duplicate"
+
+    ACTION_CHOICES = [
+        (ACTION_IGNORED_AUTO_REPLY, "Ignored Auto Reply"),
+        (ACTION_IGNORED_NOT_ENABLED, "Ignored Not Enabled"),
+        (ACTION_CATEGORY_STOP, "Category Stop"),
+        (ACTION_EMAIL_TYPE_STOP, "Email Type Stop"),
+        (ACTION_DUPLICATE, "Duplicate"),
+    ]
+
+    message_id = models.CharField(max_length=255, unique=True)
+    from_email = models.CharField(max_length=254, blank=True)
+    to_email = models.CharField(max_length=254, blank=True)
+    subject = models.CharField(max_length=255, blank=True)
+    token_email = models.CharField(max_length=254, blank=True)
+    token_email_type = models.CharField(max_length=50, blank=True, db_index=True)
+    token_category = models.CharField(max_length=50, blank=True, db_index=True)
+    action = models.CharField(max_length=32, choices=ACTION_CHOICES)
+    cancelled_count = models.IntegerField(default=0)
+    processed_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    raw_payload = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "email_queue_email_reply_event"
+        verbose_name = "Email Reply Event"
+        verbose_name_plural = "Email Reply Events"
+        ordering = ["-processed_at"]
+        indexes = [
+            models.Index(fields=["action", "-processed_at"], name="emailreply_action_time_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.message_id} ({self.action})"

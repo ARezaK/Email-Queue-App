@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 
+from .reply_stop import build_reply_to_address, generate_reply_stop_token, is_auto_stop_on_reply
 from .rendering import render_email
 from .unsubscribe import (
     add_unsubscribe_footer,
@@ -104,6 +105,19 @@ def send_queued_email(queued_email) -> bool:
                 unsubscribe_category,
             )
 
+        reply_to = None
+        if is_auto_stop_on_reply(queued_email.email_type):
+            try:
+                reply_token = generate_reply_stop_token(
+                    to_email=queued_email.to_email,
+                    email_type=queued_email.email_type,
+                    category=unsubscribe_category,
+                )
+                reply_to = [build_reply_to_address(reply_token)]
+            except Exception as exc:
+                # Never fail delivery because reply-stop metadata cannot be generated.
+                logger.warning(f"Could not build reply-stop Reply-To for email {queued_email.id}: {exc}")
+
         # Create and send email
         from_email = getattr(settings, "DEFAULT_FROM_EMAIL", settings.EMAIL_HOST_USER)
         # older versions of django did not have a default from email value set. newer ones do
@@ -116,11 +130,17 @@ def send_queued_email(queued_email) -> bool:
                 "DEFAULT_FROM_EMAIL is set to 'webmaster@localhost' and EMAIL_HOST_USER is not defined in settings. Please set a valid DEFAULT_FROM_EMAIL in your settings."
             )
 
+        email_kwargs = {
+            "subject": rendered["subject"],
+            "body": rendered["text_body"],
+            "from_email": from_email,
+            "to": [queued_email.to_email],
+        }
+        if reply_to:
+            email_kwargs["reply_to"] = reply_to
+
         email = EmailMultiAlternatives(
-            subject=rendered["subject"],
-            body=rendered["text_body"],
-            from_email=from_email,
-            to=[queued_email.to_email],
+            **email_kwargs,
         )
 
         if rendered["html_body"]:
