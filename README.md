@@ -58,9 +58,16 @@ SITE_URL = "https://example.com"
 # Optional overrides:
 # EMAIL_QUEUE_BASED_URL = "https://example.com"
 # EMAIL_QUEUE_REPLY_STOP_BASE_ADDRESS = "email-reply@replies.example.com"
+# Default if unset:
+# - Runtime sending uses email-reply@replies.<SITE_URL host>
+# - Cloudflare setup/check defaults to email-reply@replies.<zone>
 # EMAIL_QUEUE_REPLY_FORWARD_TO = "support@example.com"  # defaults to DEFAULT_FROM_EMAIL
 # EMAIL_QUEUE_REPLY_STOP_ALLOWED_SCOPES = ["category", "email_type"]
 ```
+
+`SITE_URL` should be an absolute URL (include scheme), for example:
+- `https://guessthe.game` (recommended)
+- `guessthe.game` (not recommended for reply-stop webhook integration)
 
 5. Run migrations:
 ```bash
@@ -244,7 +251,7 @@ Consequence:
 
 - `EMAIL_QUEUE_REPLY_STOP_BASE_ADDRESS`:
   Optional. Default at runtime: `email-reply@replies.<SITE_URL host>`.
-  Setup/check commands default to: `email-reply@replies.<zone-apex-domain>`.
+  Setup/check commands default to: `email-reply@replies.<zone>`.
 - `EMAIL_QUEUE_REPLY_FORWARD_TO`:
   Optional forwarding inbox for user replies. Defaults to `DEFAULT_FROM_EMAIL`.
 - `EMAIL_QUEUE_REPLY_STOP_ALLOWED_SCOPES`:
@@ -343,7 +350,7 @@ Notes:
 - `--script-name` is optional (default: `email-queue-reply-stop`).
 - If token can access exactly one account, `--account-id` is optional.
 - If token can access multiple accounts, pass `--account-id`.
-- Default reply address for setup/check is `email-reply@replies.<zone-apex-domain>` to avoid apex MX changes.
+- Default reply address for setup/check is `email-reply@replies.<zone>` to avoid apex MX changes.
 - Setup never modifies/deletes existing DNS records. It only creates missing MX/TXT records for the reply subdomain.
 - Setup skips DNS automation when reply base address uses apex domain.
 - Setup command automatically:
@@ -355,6 +362,7 @@ Notes:
 - Expected manual step: click Cloudflare destination verification email.
 - Worker behavior: it always forwards the full inbound reply to your destination inbox, even if webhook delivery fails.
 - If `Zone Settings -> Read` is missing, DNS inspection may return `403`; setup/check still continue with a warning.
+- `SITE_URL` must include scheme (`https://...`) because webhook URL is derived from it.
 
 ## Admin Interface
 
