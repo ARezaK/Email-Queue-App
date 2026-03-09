@@ -214,3 +214,19 @@ def build_reply_to_address(token: str, zone_apex_domain: str | None = None) -> s
     if not sep or not local or not domain:
         raise ValueError(f"Invalid reply-stop base address: {base_address}")
     return f"{local}+{token}@{domain}"
+
+
+def build_reply_stop_message_id(token: str, zone_apex_domain: str | None = None) -> str:
+    """
+    Embed the reply-stop token in Message-ID so inbound replies can recover it
+    from In-Reply-To/References even when plus-addressing is unavailable.
+    """
+    if not token:
+        raise ValueError("Token is required")
+
+    base_address = get_reply_stop_base_address(zone_apex_domain=zone_apex_domain)
+    _, sep, domain = base_address.partition("@")
+    if not sep or not domain:
+        raise ValueError(f"Invalid reply-stop base address: {base_address}")
+
+    return f"<email-queue-reply+{token}@{domain}>"

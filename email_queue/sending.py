@@ -5,7 +5,12 @@ from django.contrib.auth.models import User
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 
-from .reply_stop import build_reply_to_address, generate_reply_stop_token, is_auto_stop_on_reply
+from .reply_stop import (
+    build_reply_stop_message_id,
+    generate_reply_stop_token,
+    get_reply_stop_base_address,
+    is_auto_stop_on_reply,
+)
 from .rendering import render_email
 from .unsubscribe import (
     add_unsubscribe_footer,
@@ -108,6 +113,7 @@ def send_queued_email(queued_email) -> bool:
             )
 
         reply_to = None
+        email_headers = None
         if is_auto_stop_on_reply(queued_email.email_type):
             try:
                 reply_token = generate_reply_stop_token(
@@ -116,7 +122,12 @@ def send_queued_email(queued_email) -> bool:
                     category=unsubscribe_category,
                     queued_email_id=queued_email.id,
                 )
-                reply_to = [build_reply_to_address(reply_token)]
+                # Use a stable reply address; token is carried in Message-ID so
+                # inbound processing does not depend on plus-addressing support.
+                reply_to = [get_reply_stop_base_address()]
+                email_headers = {
+                    "Message-ID": build_reply_stop_message_id(reply_token),
+                }
             except Exception as exc:
                 # Never fail delivery because reply-stop metadata cannot be generated.
                 logger.warning(f"Could not build reply-stop Reply-To for email {queued_email.id}: {exc}")
@@ -141,6 +152,8 @@ def send_queued_email(queued_email) -> bool:
         }
         if reply_to:
             email_kwargs["reply_to"] = reply_to
+        if email_headers:
+            email_kwargs["headers"] = email_headers
 
         email = EmailMultiAlternatives(
             **email_kwargs,

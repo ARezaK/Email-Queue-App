@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from email_queue.models import QueuedEmail
 from email_queue.reply_stop import (
+    build_reply_stop_message_id,
     build_reply_to_address,
     decode_reply_stop_token,
     generate_reply_stop_token,
@@ -92,3 +93,21 @@ class ReplyStopTokenTest(TestCase):
         self.assertTrue(address.endswith("@replies.example.com"))
         local_part = address.split("@", 1)[0]
         self.assertLessEqual(len(local_part), 64)
+
+    @override_settings(SITE_URL="https://example.com")
+    def test_message_id_contains_compact_token(self):
+        queued_email = QueuedEmail.objects.create(
+            to_email="test@example.com",
+            email_type="renewal_reminder_7_days",
+            context={},
+            scheduled_for=timezone.now(),
+            status="sent",
+        )
+        token = generate_reply_stop_token(
+            to_email=queued_email.to_email,
+            email_type=queued_email.email_type,
+            queued_email_id=queued_email.id,
+        )
+        message_id = build_reply_stop_message_id(token)
+        self.assertTrue(message_id.startswith("<email-queue-reply+v1."))
+        self.assertTrue(message_id.endswith("@replies.example.com>"))

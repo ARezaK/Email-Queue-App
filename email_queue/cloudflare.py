@@ -520,13 +520,33 @@ async function handleEmail(event) {{
   const toAddress = (message.to || "").toLowerCase();
   const localPart = toAddress.split("@")[0] || "";
   const plusIndex = localPart.indexOf("+");
-  const token = plusIndex >= 0 ? localPart.slice(plusIndex + 1) : "";
+  const inReplyTo = message.headers.get("in-reply-to") || "";
+  const references = message.headers.get("references") || "";
+  const subject = message.headers.get("subject") || "";
+
+  let token = plusIndex >= 0 ? localPart.slice(plusIndex + 1) : "";
+  if (!token) {{
+    for (const value of [inReplyTo, references, subject]) {{
+      const fromMessageId = String(value).match(/email-queue-reply\\+([A-Za-z0-9._-]+)@/i);
+      if (fromMessageId && fromMessageId[1]) {{
+        token = fromMessageId[1];
+        break;
+      }}
+      const fromSubjectTag = String(value).match(/\\[eqr:([A-Za-z0-9._-]+)\\]/i);
+      if (fromSubjectTag && fromSubjectTag[1]) {{
+        token = fromSubjectTag[1];
+        break;
+      }}
+    }}
+  }}
 
   const headers = {{
     auto_submitted: message.headers.get("auto-submitted") || "",
     x_autoreply: message.headers.get("x-autoreply") || "",
     precedence: message.headers.get("precedence") || "",
     x_auto_response_suppress: message.headers.get("x-auto-response-suppress") || "",
+    in_reply_to: inReplyTo,
+    references: references,
   }};
 
   const webhookUrl = typeof WEBHOOK_URL === "string" && WEBHOOK_URL ? WEBHOOK_URL : "{safe_webhook}";

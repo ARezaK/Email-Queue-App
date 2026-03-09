@@ -65,7 +65,7 @@ EMAIL_QUEUE_TYPES = {
         # - True: always include footer
         # - False: never include footer
         include_unsubscribe_footer=True,
-        auto_stop_on_reply=True,      # adds tokenized Reply-To
+        auto_stop_on_reply=True,      # uses reply-stop address + tokenized Message-ID
         auto_stop_scope="category",   # or "email_type"
     ),
 }
@@ -397,6 +397,8 @@ Notes:
   - upserts the worker routing rule
 - Expected manual step: click Cloudflare destination verification email.
 - Worker behavior: it always forwards the full inbound reply to your destination inbox, even if webhook delivery fails.
+- Worker extracts reply-stop token from `Reply-To` plus alias when available, and falls back to `In-Reply-To`/`References` Message-ID token.
+- Because of Message-ID fallback, auto-stop does not require Cloudflare plus-addressing support.
 - If `Zone Settings -> Read` is missing, DNS inspection may return `403`; setup/check still continue with a warning.
 - `SITE_URL` must include scheme (`https://...`) because webhook URL is derived from it.
 
