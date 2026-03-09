@@ -36,7 +36,19 @@ urlpatterns = [
 ]
 ```
 
-2.1 Ensure template loading can find app templates:
+2.1 (Optional, for click tracking) add middleware:
+```python
+MIDDLEWARE = [
+    # ...
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "email_queue.middleware.EmailClickTrackingMiddleware",
+]
+```
+
+Place it after session/auth middleware so user/session attribution works.
+
+2.2 Ensure template loading can find app templates:
 ```python
 TEMPLATES = [
     {
