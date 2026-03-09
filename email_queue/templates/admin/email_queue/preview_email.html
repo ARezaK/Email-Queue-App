@@ -1,0 +1,44 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<h1>Email Preview: {{ queued_email.email_type }}</h1>
+
+<div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
+    <strong>To:</strong> {{ queued_email.to_email }}<br>
+    <strong>Status:</strong> {{ queued_email.status }}<br>
+    <strong>Scheduled:</strong> {{ queued_email.scheduled_for }}<br>
+    {% if queued_email.batch_id %}
+    <strong>Batch ID:</strong> {{ queued_email.batch_id }}<br>
+    {% endif %}
+</div>
+
+{% if error %}
+    <div style="background: #f8d7da; padding: 15px; border: 1px solid #f5c6cb; border-radius: 4px; margin: 20px 0;">
+        <strong style="color: #721c24;">Error rendering email:</strong>
+        <pre style="margin-top: 10px; color: #721c24;">{{ error }}</pre>
+    </div>
+{% else %}
+    <h2 style="margin-top: 30px;">Subject</h2>
+    <div style="background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 4px; font-family: monospace;">
+        {{ subject }}
+    </div>
+
+    <h2 style="margin-top: 30px;">Text Body</h2>
+    <pre style="background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 4px; white-space: pre-wrap; font-family: monospace;">{{ text_body }}</pre>
+
+    {% if html_body %}
+        <h2 style="margin-top: 30px;">HTML Body</h2>
+        <iframe
+            srcdoc="{{ html_body }}"
+            style="width: 100%; height: 600px; border: 1px solid #dee2e6; border-radius: 4px;"
+        ></iframe>
+    {% else %}
+        <p style="margin-top: 30px; color: #6c757d;"><em>No HTML version available (text-only email)</em></p>
+    {% endif %}
+{% endif %}
+
+<div style="margin-top: 30px;">
+    <a href="{% url 'admin:email_queue_queuedemail_change' queued_email.id %}" class="button">Back to Email</a>
+</div>
+{% endblock %}

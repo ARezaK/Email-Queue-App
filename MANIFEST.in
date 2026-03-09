@@ -1,0 +1,1 @@
+recursive-include email_queue/templates *.html *.txt

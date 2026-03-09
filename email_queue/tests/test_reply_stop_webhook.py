@@ -56,17 +56,18 @@ class ReplyStopWebhookTest(TestCase):
         self.assertEqual(response_bad.status_code, 401)
 
     def test_auto_reply_is_ignored(self):
-        token = generate_reply_stop_token(
-            to_email="user@example.com",
-            email_type="renewal_reminder_7_days",
-            category="renewal",
-        )
-        QueuedEmail.objects.create(
+        queued_email = QueuedEmail.objects.create(
             to_email="user@example.com",
             email_type="renewal_reminder_7_days",
             context={},
             scheduled_for=timezone.now(),
             status="queued",
+        )
+        token = generate_reply_stop_token(
+            to_email="user@example.com",
+            email_type="renewal_reminder_7_days",
+            category="renewal",
+            queued_email_id=queued_email.id,
         )
 
         response = self.client.post(
@@ -100,6 +101,7 @@ class ReplyStopWebhookTest(TestCase):
             to_email="user@example.com",
             email_type="renewal_reminder_7_days",
             category="renewal",
+            queued_email_id=qe.id,
         )
         payload = self._payload(message_id="msg-process-1", token=token)
 

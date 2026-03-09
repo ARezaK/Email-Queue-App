@@ -36,12 +36,35 @@ urlpatterns = [
 ]
 ```
 
+2.1 Ensure template loading can find app templates:
+```python
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "APP_DIRS": True,  # required for email_queue/templates/*
+        # "DIRS": [...],    # optional project-level overrides
+    },
+]
+```
+
+If your project uses `APP_DIRS=False`, copy these templates into your project template directory:
+- `email_queue/templates/email_queue/base.txt` -> `templates/email_queue/base.txt`
+- `email_queue/templates/email_queue/base.html` -> `templates/email_queue/base.html`
+- `email_queue/templates/admin/email_queue/preview_email.html` -> `templates/admin/email_queue/preview_email.html`
+
+This keeps your current template-loader strategy unchanged while still enabling email rendering and admin preview.
+
 3. Configure email types and context schemas in project settings:
 ```python
 EMAIL_QUEUE_TYPES = {
     "renewal_reminder_7_days": EmailTypeConfig(
         subject="Your subscription expires soon",
         category="renewal",
+        # optional override:
+        # - if unset: follows skip_sending_if_unsubscribed
+        # - True: always include footer
+        # - False: never include footer
+        include_unsubscribe_footer=True,
         auto_stop_on_reply=True,      # adds tokenized Reply-To
         auto_stop_scope="category",   # or "email_type"
     ),
@@ -168,7 +191,13 @@ EMAIL_CONTEXT_SCHEMAS["new_email_type"] = NewEmailTypeContext
 
 ### 3. Create Templates
 
-Create directory: `templates/email_queue/new_email_type/`
+Create directory:
+- In a host project: `templates/email_queue/new_email_type/`
+- In this package repo: `email_queue/templates/email_queue/new_email_type/`
+
+Base templates used by email bodies live at:
+- `email_queue/templates/email_queue/base.txt`
+- `email_queue/templates/email_queue/base.html`
 
 Create `body.txt`:
 ```django
@@ -187,6 +216,10 @@ Create `body.html` (optional):
 <p>Your HTML content with {{ variable }}</p>
 {% endblock %}
 ```
+
+Admin preview template path:
+- `email_queue/templates/admin/email_queue/preview_email.html`
+- You can override it at project level with `templates/admin/email_queue/preview_email.html`.
 
 ### 4. Test
 
@@ -221,7 +254,10 @@ EMAIL_QUEUE_BASED_URL = "https://your-domain.com"
 ### 6. Category Unsubscribe Behavior
 
 - Set `category` per email type in `EmailTypeConfig`.
-- Every send includes an unsubscribe link for that category.
+- Footer default when `include_unsubscribe_footer` is unset:
+  - `skip_sending_if_unsubscribed=True` -> footer included
+  - `skip_sending_if_unsubscribed=False` -> footer not included
+- `include_unsubscribe_footer=True` forces footer on; `False` forces footer off.
 - Clicking the link records preference in `EmailUnsubscribe`.
 - Future emails in that category are skipped (`status="skipped"`).
 - Other categories continue to send normally.
@@ -268,17 +304,17 @@ EMAIL_QUEUE_TYPES = {
     "promo_summer_sale": EmailTypeConfig(
         subject="Summer sale is live",
         category="marketing",
-        require_not_unsubscribed=True,
+        skip_sending_if_unsubscribed=True,
     ),
     "new_case_announcement": EmailTypeConfig(
         subject="New case: {{ case_title }}",
         category="notification",
-        require_not_unsubscribed=True,
+        skip_sending_if_unsubscribed=True,
     ),
     "password_reset": EmailTypeConfig(
         subject="Reset your password",
         category="account",
-        require_not_unsubscribed=False,  # always send transactional resets
+        skip_sending_if_unsubscribed=False,  # always send transactional resets
     ),
 }
 ```

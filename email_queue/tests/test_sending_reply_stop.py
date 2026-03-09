@@ -52,8 +52,10 @@ class SendingReplyStopTest(TestCase):
         self.assertEqual(queued_email.status, "sent")
         self.assertIn("reply_to", mock_email_cls.call_args.kwargs)
         reply_to = mock_email_cls.call_args.kwargs["reply_to"][0]
-        self.assertTrue(reply_to.startswith("email-reply+"))
+        self.assertTrue(reply_to.startswith("email-reply+v1."))
         self.assertTrue(reply_to.endswith("@replies.example.com"))
+        local_part = reply_to.split("@", 1)[0]
+        self.assertLessEqual(len(local_part), 64)
 
     @override_settings(
         EMAIL_QUEUE_TYPES={

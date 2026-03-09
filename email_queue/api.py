@@ -8,7 +8,7 @@ from django.utils import timezone
 from .models import QueuedEmail
 from .schemas import validate_email_context
 from .sending import send_queued_email
-from .unsubscribe import get_email_category, is_unsubscribed, should_enforce_unsubscribe
+from .unsubscribe import get_email_category, is_unsubscribed, should_skip_unsubscribed
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def queue_email(
         scheduled_for = timezone.now()
 
     category = get_email_category(email_type)
-    unsubscribe_enforced = should_enforce_unsubscribe(email_type)
+    unsubscribe_enforced = should_skip_unsubscribed(email_type)
     is_recipient_unsubscribed = unsubscribe_enforced and is_unsubscribed(to_email, category)
     unsubscribe_reason = f"Recipient unsubscribed from {category.replace('_', ' ')} emails"
 

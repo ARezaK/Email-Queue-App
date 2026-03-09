@@ -50,10 +50,20 @@ def get_email_category(email_type: str) -> str:
     return normalize_category(category)
 
 
-def should_enforce_unsubscribe(email_type: str) -> bool:
+def should_skip_unsubscribed(email_type: str) -> bool:
     email_types = getattr(settings, "EMAIL_QUEUE_TYPES", {})
     config = email_types.get(email_type)
-    return bool(_config_value(config, "require_not_unsubscribed", True))
+    return bool(_config_value(config, "skip_sending_if_unsubscribed", True))
+
+
+def should_include_unsubscribe_footer(email_type: str) -> bool:
+    email_types = getattr(settings, "EMAIL_QUEUE_TYPES", {})
+    config = email_types.get(email_type)
+    include_footer = _config_value(config, "include_unsubscribe_footer", None)
+    if include_footer is None:
+        # Default footer behavior mirrors unsubscribe skipping unless explicitly overridden.
+        return should_skip_unsubscribed(email_type)
+    return bool(include_footer)
 
 
 def is_unsubscribed(email: str, category: str) -> bool:

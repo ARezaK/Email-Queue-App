@@ -15,7 +15,9 @@ class EmailTypeConfig:
         category: Unsubscribe category for this email type (e.g., "marketing", "notification")
         allow_inactive: Whether to send to inactive users (default: False)
         require_verified_email: Whether to require verified email (default: True)
-        require_not_unsubscribed: Whether to check unsubscribe status (default: True)
+        skip_sending_if_unsubscribed: Whether to skip sends for unsubscribed recipients (default: True)
+        include_unsubscribe_footer: Whether to append unsubscribe footer to the rendered email.
+            If unset, defaults to skip_sending_if_unsubscribed behavior.
         auto_stop_on_reply: Whether inbound replies should trigger automatic send suppression (default: False)
         auto_stop_scope: Suppression scope when auto-stop is enabled ("category" or "email_type")
     """
@@ -24,7 +26,8 @@ class EmailTypeConfig:
     category: str = "notification"
     allow_inactive: bool = False
     require_verified_email: bool = True
-    require_not_unsubscribed: bool = True
+    skip_sending_if_unsubscribed: bool = True
+    include_unsubscribe_footer: bool | None = None
     auto_stop_on_reply: bool = False
     auto_stop_scope: str = AUTO_STOP_SCOPE_CATEGORY
 

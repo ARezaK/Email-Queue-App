@@ -11,7 +11,8 @@ from .unsubscribe import (
     add_unsubscribe_footer,
     get_email_category,
     is_unsubscribed,
-    should_enforce_unsubscribe,
+    should_include_unsubscribe_footer,
+    should_skip_unsubscribed,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,8 @@ def send_queued_email(queued_email) -> bool:
             logger.info(f"Skipped expired email {queued_email.id} ({queued_email.email_type})")
             return False
 
-        unsubscribe_enforced = should_enforce_unsubscribe(queued_email.email_type)
+        unsubscribe_enforced = should_skip_unsubscribed(queued_email.email_type)
+        include_unsubscribe_footer = should_include_unsubscribe_footer(queued_email.email_type)
         unsubscribe_category = get_email_category(queued_email.email_type)
 
         if unsubscribe_enforced and is_unsubscribed(queued_email.to_email, unsubscribe_category):
@@ -97,7 +99,7 @@ def send_queued_email(queued_email) -> bool:
 
         # Render email with UTM tracking
         rendered = render_email(queued_email.email_type, queued_email.context, email_id=queued_email.id)
-        if unsubscribe_enforced:
+        if include_unsubscribe_footer:
             rendered["text_body"], rendered["html_body"] = add_unsubscribe_footer(
                 rendered["text_body"],
                 rendered["html_body"],
@@ -112,6 +114,7 @@ def send_queued_email(queued_email) -> bool:
                     to_email=queued_email.to_email,
                     email_type=queued_email.email_type,
                     category=unsubscribe_category,
+                    queued_email_id=queued_email.id,
                 )
                 reply_to = [build_reply_to_address(reply_token)]
             except Exception as exc:

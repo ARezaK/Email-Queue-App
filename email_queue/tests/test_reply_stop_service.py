@@ -73,6 +73,7 @@ class ReplyStopServiceTest(TestCase):
             to_email=self.to_email,
             email_type="renewal_reminder_30_days",
             category="renewal",
+            queued_email_id=qe1.id,
         )
         result = self.service.process_payload(
             {
@@ -118,6 +119,7 @@ class ReplyStopServiceTest(TestCase):
             to_email=self.to_email,
             email_type="weekly_digest",
             category="marketing",
+            queued_email_id=qe1.id,
         )
         result = self.service.process_payload(
             {
@@ -152,6 +154,7 @@ class ReplyStopServiceTest(TestCase):
             to_email=self.to_email,
             email_type="feature_announcement",
             category="marketing",
+            queued_email_id=qe.id,
         )
 
         result = self.service.process_payload(
@@ -183,6 +186,7 @@ class ReplyStopServiceTest(TestCase):
             to_email=self.to_email,
             email_type="weekly_digest",
             category="marketing",
+            queued_email_id=qe.id,
         )
         payload = {
             "message_id": "msg-duplicate-1",

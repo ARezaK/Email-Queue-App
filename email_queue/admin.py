@@ -7,7 +7,7 @@ from django.utils.html import format_html
 from .models import EmailClick, EmailReplyEvent, EmailUnsubscribe, QueuedEmail
 from .rendering import render_email
 from .sending import send_queued_email
-from .unsubscribe import add_unsubscribe_footer, get_email_category, should_enforce_unsubscribe
+from .unsubscribe import add_unsubscribe_footer, get_email_category, should_include_unsubscribe_footer
 
 
 @admin.register(QueuedEmail)
@@ -147,7 +147,7 @@ class QueuedEmailAdmin(admin.ModelAdmin):
         try:
             # Render with UTM parameters to show what will actually be sent
             rendered = render_email(queued_email.email_type, queued_email.context, email_id=queued_email.id)
-            if should_enforce_unsubscribe(queued_email.email_type):
+            if should_include_unsubscribe_footer(queued_email.email_type):
                 rendered["text_body"], rendered["html_body"] = add_unsubscribe_footer(
                     rendered["text_body"],
                     rendered["html_body"],
