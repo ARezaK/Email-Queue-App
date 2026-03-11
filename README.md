@@ -101,8 +101,8 @@ SITE_URL = "https://example.com"
 ```
 
 `SITE_URL` should be an absolute URL (include scheme), for example:
-- `https://guessthe.game` (recommended)
-- `guessthe.game` (not recommended for reply-stop webhook integration)
+- `https://example.com` (recommended)
+- `example.com` (not recommended for reply-stop webhook integration)
 
 5. Run migrations:
 ```bash
@@ -114,12 +114,7 @@ python manage.py migrate
 python manage.py send_queued_emails
 ```
 
-7. (Optional, for auto-stop-on-reply) configure Cloudflare routing + worker:
-```bash
-export CLOUDFLARE_API_TOKEN="<token>"
-python manage.py email_queue_setup_reply_stop_cloudflare --zone example.com
-python manage.py email_queue_check_reply_stop_cloudflare --zone example.com
-```
+7. (Optional) Set up reply-stop for auto-cancellation on reply — see [Reply-Stop](#reply-stop-auto-stop-on-reply) section below.
 
 ## Quick Start
 
@@ -274,39 +269,7 @@ EMAIL_QUEUE_BASED_URL = "https://your-domain.com"
 - Future emails in that category are skipped (`status="skipped"`).
 - Other categories continue to send normally.
 
-### 6.1 Auto-Stop Scope Differences and Consequences
-
-`auto_stop_scope` controls how far a reply-based stop action goes when `auto_stop_on_reply=True`.
-
-`auto_stop_scope="category"`:
-- A reply to one email type stops all queued emails in that category for that recipient.
-- Future emails in that category are also blocked (category unsubscribe record is persisted).
-- Best for multi-step campaigns where all related reminders should stop together.
-
-Consequence:
-- More aggressive. A single reply can stop unrelated email types if they share the same category.
-
-`auto_stop_scope="email_type"`:
-- A reply stops only queued emails for that exact email type.
-- Other email types in the same category can continue.
-- No category unsubscribe is persisted by default in v1.
-
-Consequence:
-- Narrower and safer, but future sends of that email type are not globally blocked unless additional suppression logic is added.
-- For both scopes, cancellation applies to currently queued/failed rows only. Already sent rows are unaffected.
-
-### 6.2 Reply-Stop Settings Reference
-
-- `EMAIL_QUEUE_REPLY_STOP_BASE_ADDRESS`:
-  Optional. Default at runtime: `email-reply@replies.<SITE_URL host>`.
-  Setup/check commands default to: `email-reply@replies.<zone>`.
-- `EMAIL_QUEUE_REPLY_FORWARD_TO`:
-  Optional forwarding inbox for user replies. Defaults to `DEFAULT_FROM_EMAIL`.
-- `EMAIL_QUEUE_REPLY_STOP_ALLOWED_SCOPES`:
-  Optional allowlist for webhook processing. Default: `["category", "email_type"]`.
-  If a configured email type uses a scope outside this allowlist, webhook processing skips stop actions for that event.
-
-### 7. Unsubscribe Examples
+### 6.1 Unsubscribe Examples
 
 ```python
 # settings.py
@@ -347,72 +310,183 @@ queue_email(
 )
 ```
 
-### 8. Cloudflare Setup Inputs (for reply-stop setup)
+## Reply-Stop (Auto-Stop on Reply)
 
-Prerequisite:
-- You must have at least one domain configured in Cloudflare (a Cloudflare "zone").
-  Reason: Email Routing and Worker routing rules are attached to a Cloudflare zone, so reply-stop cannot be provisioned without one.
-  If your primary app domain is not on Cloudflare, you can use a separate Cloudflare-managed domain for reply handling and set `EMAIL_QUEUE_REPLY_STOP_BASE_ADDRESS` to that domain.
+Reply-stop automatically cancels future queued emails when a recipient replies. This is useful for multi-step reminder campaigns where a reply indicates the user has engaged and further reminders are unnecessary.
 
-If you use Cloudflare setup/check commands, you will need:
+### How It Works
 
-- `--zone <domain>`: Recommended input (example: `example.com`).
-  Commands can resolve `zone_id` automatically from this.
-- `--zone-id <zone>`: Optional explicit override if you already have it.
-  You can copy this from Cloudflare Dashboard -> Domain Overview -> API section.
-- `--account-id <acct>`: Optional.
-  If omitted, commands auto-discover account when token can access exactly one account; otherwise they fail with an instruction to provide `--account-id`.
-  You can copy this from Cloudflare Dashboard -> Account Home -> right sidebar/API section.
-- `--script-name <worker>`: Optional. Defaults to `email-queue-reply-stop`.
-  This is your Worker script identifier; keep default unless your org needs a naming standard.
-- Cloudflare API token: required for API-based setup/check calls.
-  Recommended env var: `CLOUDFLARE_API_TOKEN`.
-  Even with `--zone-id` and `--account-id`, API token is still required.
-  Recommended minimum permissions (scoped to the target zone/account):
-  - `Zone -> Zone -> Read`
-  - `Zone -> DNS -> Read`
-  - `Zone -> DNS -> Edit` (setup creates missing MX/TXT for reply subdomain only)
-  - `Zone -> Email Routing Rules -> Read`
-  - `Zone -> Email Routing Rules -> Edit`
-  - `Zone -> Zone Settings -> Read` (used for optional email routing DNS status check)
-  - `Account -> Email Routing Addresses -> Read`
-  - `Account -> Email Routing Addresses -> Write` (create destination forwarding address)
-  - `Account -> Workers Scripts -> Read`
-  - `Account -> Workers Scripts -> Edit` (setup deploys/updates worker script + secret)
-  - `Account -> Account Settings -> Read` (for account auto-discovery when `--account-id` is omitted)
+1. Outbound emails include a tokenized `Message-ID` header and a `Reply-To` address pointing to a Cloudflare-managed reply subdomain.
+2. When the recipient replies, Cloudflare Email Routing delivers the inbound email to a Worker script.
+3. The Worker extracts the reply-stop token (from `In-Reply-To`/`References` headers or plus-addressing), then POSTs a webhook to your Django backend.
+4. Django decodes the token, creates an `EmailReplyEvent` audit record, and cancels matching queued emails.
+5. The reply is also forwarded to your support inbox so normal conversation can continue.
 
-Run setup/check/print commands:
+### Step-by-Step Setup Guide
+
+#### 1. Configure Email Types
+
+Enable reply-stop on the email types that should auto-cancel when replied to:
+
+```python
+# settings.py
+EMAIL_QUEUE_TYPES = {
+    "renewal_reminder_7_days": EmailTypeConfig(
+        subject="Your subscription expires soon",
+        category="renewal",
+        auto_stop_on_reply=True,
+        auto_stop_scope="category",  # or "email_type"
+    ),
+    "renewal_reminder_3_days": EmailTypeConfig(
+        subject="Subscription expiring in 3 days",
+        category="renewal",
+        auto_stop_on_reply=True,
+        auto_stop_scope="category",
+    ),
+}
+```
+
+#### 2. Configure Django Settings
+
+```python
+# settings.py
+
+# Required: absolute URL with scheme (webhook URL is derived from this)
+SITE_URL = "https://api.example.com"
+
+# Optional overrides (sensible defaults are used if omitted):
+# EMAIL_QUEUE_REPLY_STOP_BASE_ADDRESS = "email-reply@replies.example.com"
+#   Default: email-reply@replies.<SITE_URL host>
+# EMAIL_QUEUE_REPLY_FORWARD_TO = "support@example.com"
+#   Default: DEFAULT_FROM_EMAIL
+# EMAIL_QUEUE_REPLY_STOP_ALLOWED_SCOPES = ["category", "email_type"]
+#   Default: both scopes allowed
+```
+
+#### 3. Include URL Routes
+
+The webhook endpoint must be reachable at `/email-queue/webhooks/reply-stop/`:
+
+```python
+# urls.py
+urlpatterns = [
+    path("", include("email_queue.urls")),
+]
+```
+
+#### 4. Run Migrations
 
 ```bash
-# 1) Setup or update routing rule
+python manage.py migrate
+```
+
+This creates the `EmailReplyEvent` and `EmailUnsubscribe` tables.
+
+#### 5. Create a Cloudflare API Token
+
+Go to Cloudflare Dashboard > My Profile > API Tokens > Create Token.
+
+Required permissions (scoped to your zone/account):
+
+| Scope | Permission | Purpose |
+|-------|-----------|---------|
+| Zone > Zone | Read | Look up zone by domain name |
+| Zone > DNS | Read + Edit | Create MX/TXT records for reply subdomain |
+| Zone > Email Routing Rules | Read + Edit | Create/update email routing rule |
+| Zone > Zone Settings | Read | Check email routing DNS status (optional) |
+| Account > Email Routing Addresses | Read + Write | Register destination forwarding address |
+| Account > Workers Scripts | Read + Edit | Deploy worker script and set secrets |
+| Account > Account Settings | Read | Auto-discover account ID (optional) |
+
+Set the token as an environment variable:
+
+```bash
+export CLOUDFLARE_API_TOKEN="your-token-here"
+```
+
+#### 6. Run the Setup Command
+
+```bash
 python manage.py email_queue_setup_reply_stop_cloudflare --zone example.com
+```
 
-# 2) Verify integration state
+This single command:
+- Creates MX and SPF TXT records on `replies.example.com` for Cloudflare Email Routing
+- Registers your forwarding destination address in Cloudflare
+- Deploys the Worker script (`email-queue-reply-stop`)
+- Enables Worker observability (logs persisted at 100% sampling)
+- Sets the `WEBHOOK_BEARER_TOKEN` Worker secret (from Django `SECRET_KEY`)
+- Creates an email routing rule: `email-reply@replies.example.com` -> Worker
+
+**Manual step**: check your forwarding inbox for a Cloudflare verification email and click the link.
+
+Optional flags:
+- `--account-id <id>`: Required if your token can access multiple Cloudflare accounts.
+- `--script-name <name>`: Override default worker name (default: `email-queue-reply-stop`).
+- `--reply-base-address <addr>`: Override reply address (default: `email-reply@replies.<zone>`).
+- `--reply-forward-to <email>`: Override forwarding destination.
+- `--dry-run`: Preview what would be created without making changes.
+
+#### 7. Verify the Setup
+
+```bash
 python manage.py email_queue_check_reply_stop_cloudflare --zone example.com
+```
 
-# 3) Print worker config contract
+This checks DNS records, worker script existence, routing rules, and destination addresses.
+
+#### 8. Test End-to-End
+
+1. Queue a test email with `auto_stop_on_reply=True` and send it.
+2. Reply to the email from the recipient's inbox.
+3. Check Django admin for an `EmailReplyEvent` record at `/admin/email_queue/emailreplyevent/`.
+4. Verify that matching queued emails were cancelled.
+
+To debug, check Worker logs in Cloudflare Dashboard > Workers & Pages > `email-queue-reply-stop` > Logs. The worker logs a detailed summary line for every invocation including `webhook_attempted`, `webhook_status`, `webhook_ok`, `webhook_error`, and `webhook_skipped` fields.
+
+```bash
+# Print the webhook URL and bearer token the worker should use
 python manage.py email_queue_print_reply_stop_worker_config
 ```
 
-Notes:
-- `--script-name` is optional (default: `email-queue-reply-stop`).
-- If token can access exactly one account, `--account-id` is optional.
-- If token can access multiple accounts, pass `--account-id`.
-- Default reply address for setup/check is `email-reply@replies.<zone>` to avoid apex MX changes.
-- Setup never modifies/deletes existing DNS records. It only creates missing MX/TXT records for the reply subdomain.
-- Setup skips DNS automation when reply base address uses apex domain.
-- Setup command automatically:
-  - creates missing MX/TXT on `replies.<zone>` when needed
-  - creates destination forwarding address if missing
-  - deploys/updates worker script
-  - sets worker secret `WEBHOOK_BEARER_TOKEN` from Django `SECRET_KEY`
-  - upserts the worker routing rule
-- Expected manual step: click Cloudflare destination verification email.
-- Worker behavior: it always forwards the full inbound reply to your destination inbox, even if webhook delivery fails.
-- Worker extracts reply-stop token from `Reply-To` plus alias when available, and falls back to `In-Reply-To`/`References` Message-ID token.
-- Because of Message-ID fallback, auto-stop does not require Cloudflare plus-addressing support.
-- If `Zone Settings -> Read` is missing, DNS inspection may return `403`; setup/check still continue with a warning.
-- `SITE_URL` must include scheme (`https://...`) because webhook URL is derived from it.
+### Auto-Stop Scope Reference
+
+`auto_stop_scope` controls how broadly a reply cancels queued emails:
+
+| Scope | Cancels | Persists unsubscribe | Best for |
+|-------|---------|---------------------|----------|
+| `"category"` | All queued emails in the same category for that recipient | Yes (blocks future sends in category) | Multi-step campaigns where all related reminders should stop together |
+| `"email_type"` | Only queued emails of the exact same email type | No | Narrow cancellation where other types in the same category should continue |
+
+For both scopes, cancellation applies to currently queued/failed rows only. Already-sent emails are unaffected.
+
+### Settings Reference
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `EMAIL_QUEUE_REPLY_STOP_BASE_ADDRESS` | `email-reply@replies.<SITE_URL host>` | Reply-To address on outbound emails |
+| `EMAIL_QUEUE_REPLY_FORWARD_TO` | `DEFAULT_FROM_EMAIL` | Inbox where replies are forwarded for human follow-up |
+| `EMAIL_QUEUE_REPLY_STOP_ALLOWED_SCOPES` | `["category", "email_type"]` | Which scopes the webhook will process (others are ignored) |
+
+### Architecture Notes
+
+- **Token format**: Compact `v1.<base36_id>.<HMAC_signature>` — short enough to avoid address-length bounces.
+- **Token recovery**: Worker tries three methods in order: plus-addressing (`email-reply+TOKEN@...`), `In-Reply-To`/`References` Message-ID header, subject tag (`[eqr:TOKEN]`). Message-ID fallback means plus-addressing support is not required.
+- **Idempotency**: `EmailReplyEvent.message_id` has a unique constraint. Duplicate deliveries are safely ignored.
+- **Resilience**: Worker always forwards replies to the support inbox, even if the webhook fails.
+- **Auth**: Webhook is protected by Bearer token (Django `SECRET_KEY`), validated with `hmac.compare_digest` for timing-attack safety.
+- **Observability**: Worker logs a structured summary for every invocation. Setup enables Cloudflare Worker observability with 100% log sampling and persistence.
+
+### Troubleshooting
+
+| Symptom | Check | Likely cause |
+|---------|-------|-------------|
+| No `EmailReplyEvent` rows | CF dashboard > Worker logs > `webhook_skipped` field | `WEBHOOK_BEARER_TOKEN` secret missing or empty |
+| `webhook_status=401` | Compare CF secret value with Django `SECRET_KEY` | Bearer token mismatch (re-run setup to re-set) |
+| `webhook_error=...` | Worker logs | Network error reaching backend (check `SITE_URL`) |
+| `webhook_attempted=false` | Worker logs > `webhook_skipped` | Token not found in reply headers, or bearer secret not bound |
+| Worker runs but no webhook, very fast execution (< 5ms) | Check worker uses `event.waitUntil()` | Without `waitUntil`, async operations are terminated before completing |
+| Reply not forwarded | Worker logs > `forward_error` | Destination address not verified in Cloudflare |
 
 ## Admin Interface
 

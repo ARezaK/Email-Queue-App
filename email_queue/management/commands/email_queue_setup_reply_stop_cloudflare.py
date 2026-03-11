@@ -158,6 +158,9 @@ class Command(BaseCommand):
             client.deploy_worker_script(account_id, script_name, script_content)
             self.stdout.write(f"Worker script deployed: {script_name}")
 
+            client.configure_worker_observability(account_id, script_name)
+            self.stdout.write("Worker observability enabled (logs + traces)")
+
             bearer = (getattr(settings, "SECRET_KEY", "") or "").strip()
             if not bearer:
                 raise CloudflareAPIError("SECRET_KEY must be set to configure webhook bearer token")

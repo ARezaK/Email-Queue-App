@@ -255,6 +255,18 @@ class CloudflareClient:
 
         return decoded.get("result") or {}
 
+    def configure_worker_observability(self, account_id: str, script_name: str) -> dict:
+        return self._request(
+            "PATCH",
+            f"/accounts/{account_id}/workers/scripts/{script_name}/script-settings",
+            payload={
+                "observability": {
+                    "enabled": True,
+                    "head_sampling_rate": 1,
+                },
+            },
+        )
+
     def upsert_worker_secret(self, account_id: str, script_name: str, secret_name: str, secret_value: str) -> dict:
         if not secret_name:
             raise CloudflareAPIError("Worker secret name is required")
@@ -512,29 +524,53 @@ def build_reply_stop_worker_script(*, webhook_url_fallback: str, reply_forward_t
 
     return f"""
 addEventListener("email", (event) => {{
-  event.respondWith(handleEmail(event));
+  event.waitUntil(handleEmail(event));
 }});
 
 async function handleEmail(event) {{
   const message = event.message;
   const toAddress = (message.to || "").toLowerCase();
+  const fromAddress = (message.from || "").toLowerCase();
+  const inboundMessageId = message.headers.get("message-id") || "";
   const localPart = toAddress.split("@")[0] || "";
   const plusIndex = localPart.indexOf("+");
   const inReplyTo = message.headers.get("in-reply-to") || "";
   const references = message.headers.get("references") || "";
   const subject = message.headers.get("subject") || "";
 
+  function snippet(value, maxLen = 160) {{
+    const text = String(value || "");
+    return text.length <= maxLen ? text : `${{text.slice(0, maxLen)}}...`;
+  }}
+  function compact(value, maxLen = 160) {{
+    return snippet(value, maxLen).replace(/\\s+/g, " ").trim();
+  }}
+
+  let tokenSource = "none";
+  let tokenSourceDetail = "none";
   let token = plusIndex >= 0 ? localPart.slice(plusIndex + 1) : "";
+  if (token) {{
+    tokenSource = "plus_alias";
+    tokenSourceDetail = "to_local_part";
+  }}
   if (!token) {{
-    for (const value of [inReplyTo, references, subject]) {{
+    for (const [fieldName, value] of [
+      ["in_reply_to", inReplyTo],
+      ["references", references],
+      ["subject", subject],
+    ]) {{
       const fromMessageId = String(value).match(/email-queue-reply\\+([A-Za-z0-9._-]+)@/i);
       if (fromMessageId && fromMessageId[1]) {{
         token = fromMessageId[1];
+        tokenSource = "message_id";
+        tokenSourceDetail = fieldName;
         break;
       }}
       const fromSubjectTag = String(value).match(/\\[eqr:([A-Za-z0-9._-]+)\\]/i);
       if (fromSubjectTag && fromSubjectTag[1]) {{
         token = fromSubjectTag[1];
+        tokenSource = "subject_tag";
+        tokenSourceDetail = fieldName;
         break;
       }}
     }}
@@ -552,10 +588,35 @@ async function handleEmail(event) {{
   const webhookUrl = typeof WEBHOOK_URL === "string" && WEBHOOK_URL ? WEBHOOK_URL : "{safe_webhook}";
   const webhookBearer = typeof WEBHOOK_BEARER_TOKEN === "string" ? WEBHOOK_BEARER_TOKEN : "";
   const replyForwardTo = typeof REPLY_FORWARD_TO === "string" && REPLY_FORWARD_TO ? REPLY_FORWARD_TO : "{safe_forward}";
+  const summary = {{
+    fromAddress,
+    toAddress,
+    inboundMessageId: compact(inboundMessageId),
+    hasInReplyTo: Boolean(inReplyTo),
+    hasReferences: Boolean(references),
+    subject: compact(subject, 80),
+    tokenSource,
+    tokenSourceDetail,
+    tokenPrefix: token ? token.slice(0, 16) : "",
+    tokenLen: token ? token.length : 0,
+    webhookAttempted: false,
+    webhookStatus: "",
+    webhookOk: "",
+    webhookBody: "",
+    webhookError: "",
+    webhookSkipped: "",
+    providerMessageId: "",
+    forwardTo: replyForwardTo,
+    forwardOk: false,
+    forwardError: "",
+  }};
 
   if (token && webhookBearer) {{
+    const providerMessageId = inboundMessageId || crypto.randomUUID();
+    summary.webhookAttempted = true;
+    summary.providerMessageId = compact(providerMessageId);
     const payload = {{
-      message_id: message.headers.get("message-id") || crypto.randomUUID(),
+      message_id: providerMessageId,
       token,
       from: message.from || "",
       to: message.to || "",
@@ -565,7 +626,7 @@ async function handleEmail(event) {{
     }};
 
     try {{
-      await fetch(webhookUrl, {{
+      const response = await fetch(webhookUrl, {{
         method: "POST",
         headers: {{
           "content-type": "application/json",
@@ -573,11 +634,45 @@ async function handleEmail(event) {{
         }},
         body: JSON.stringify(payload),
       }});
+      let responseText = "";
+      try {{
+        responseText = await response.text();
+      }} catch (readErr) {{
+        responseText = "<unreadable>";
+      }}
+      summary.webhookStatus = String(response.status);
+      summary.webhookOk = String(response.ok);
+      summary.webhookBody = compact(responseText, 300);
     }} catch (err) {{
+      summary.webhookError = compact(String(err), 200);
       // Continue so customer replies still reach inbox even if webhook is down.
     }}
+  }} else {{
+    summary.webhookSkipped =
+      `has_token=${{Boolean(token)}} has_bearer=${{Boolean(webhookBearer)}} ` +
+      `in_reply_to=${{compact(inReplyTo)}} references=${{compact(references)}}`;
   }}
 
-  await message.forward(replyForwardTo);
+  try {{
+    await message.forward(replyForwardTo);
+    summary.forwardOk = true;
+  }} catch (err) {{
+    summary.forwardError = compact(String(err), 200);
+  }}
+
+  console.log(
+    `[email-queue-reply-stop] summary from=${{summary.fromAddress}} to=${{summary.toAddress}} ` +
+    `msg_id=${{summary.inboundMessageId}} in_reply_to=${{summary.hasInReplyTo}} references=${{summary.hasReferences}} ` +
+    `subject=${{summary.subject}} token_source=${{summary.tokenSource}} token_source_detail=${{summary.tokenSourceDetail}} ` +
+    `token_prefix=${{summary.tokenPrefix}} token_len=${{summary.tokenLen}} webhook_attempted=${{summary.webhookAttempted}} ` +
+    `webhook_status=${{summary.webhookStatus}} webhook_ok=${{summary.webhookOk}} webhook_error=${{summary.webhookError}} ` +
+    `webhook_body=${{summary.webhookBody}} webhook_skipped=${{summary.webhookSkipped}} ` +
+    `provider_message_id=${{summary.providerMessageId}} forward_to=${{summary.forwardTo}} ` +
+    `forward_ok=${{summary.forwardOk}} forward_error=${{summary.forwardError}}`
+  );
+
+  if (!summary.forwardOk) {{
+    throw new Error(summary.forwardError || "forward failed");
+  }}
 }}
 """.strip() + "\n"
