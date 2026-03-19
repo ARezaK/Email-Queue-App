@@ -17,6 +17,7 @@ class QueuedEmailAdmin(admin.ModelAdmin):
         "email_type",
         "to_email",
         "status_badge",
+        "created_at",
         "scheduled_for",
         "failure_reason",
         "sent_at",
