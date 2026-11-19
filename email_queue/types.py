@@ -35,6 +35,12 @@ class EmailTypeConfig:
     auto_stop_scope: str = AUTO_STOP_SCOPE_CATEGORY
 
     def __post_init__(self):
+        category = (self.category or "").strip().lower().replace(" ", "_")
+        if category == ALL_CATEGORY:
+            raise ValueError(
+                f"Email type category '{self.category}' is reserved: 'all' means unsubscribed from every "
+                "email and cannot be used as an email type's category."
+            )
         scope = (self.auto_stop_scope or AUTO_STOP_SCOPE_CATEGORY).strip().lower().replace(" ", "_")
         if scope not in AUTO_STOP_ALLOWED_SCOPES:
             allowed = ", ".join(sorted(AUTO_STOP_ALLOWED_SCOPES))

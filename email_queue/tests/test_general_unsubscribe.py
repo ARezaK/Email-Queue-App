@@ -1,8 +1,13 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from email_queue.models import EmailUnsubscribe
-from email_queue.types import ALL_CATEGORY
-from email_queue.unsubscribe import is_unsubscribed, unsubscribe_match, unsubscribe_skip_text
+from email_queue.types import ALL_CATEGORY, EmailTypeConfig
+from email_queue.unsubscribe import (
+    get_email_category,
+    is_unsubscribed,
+    unsubscribe_match,
+    unsubscribe_skip_text,
+)
 
 
 class UnsubscribeMatchTest(TestCase):
@@ -49,3 +54,26 @@ class UnsubscribeMatchTest(TestCase):
         self.assertEqual(
             unsubscribe_skip_text("marketing_emails"), "Recipient unsubscribed from marketing emails emails"
         )
+
+
+class ReservedCategoryTest(TestCase):
+    def test_dataclass_config_rejects_all(self):
+        with self.assertRaisesMessage(ValueError, "reserved"):
+            EmailTypeConfig(subject="Hi", category="all")
+
+    def test_dataclass_config_rejects_all_any_casing(self):
+        with self.assertRaisesMessage(ValueError, "reserved"):
+            EmailTypeConfig(subject="Hi", category=" All ")
+
+    def test_dataclass_config_accepts_other_categories(self):
+        self.assertEqual(EmailTypeConfig(subject="Hi", category="marketing").category, "marketing")
+        self.assertEqual(EmailTypeConfig(subject="Hi").category, "notification")
+
+    @override_settings(EMAIL_QUEUE_TYPES={"promo": {"subject": "Hi", "category": "All"}})
+    def test_dict_config_rejected_by_get_email_category(self):
+        with self.assertRaisesMessage(ValueError, "reserved"):
+            get_email_category("promo")
+
+    @override_settings(EMAIL_QUEUE_TYPES={"promo": {"subject": "Hi", "category": "Marketing Emails"}})
+    def test_dict_config_other_category_still_works(self):
+        self.assertEqual(get_email_category("promo"), "marketing_emails")

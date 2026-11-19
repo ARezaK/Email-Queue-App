@@ -47,8 +47,14 @@ def _get_base_url() -> str:
 def get_email_category(email_type: str) -> str:
     email_types = getattr(settings, "EMAIL_QUEUE_TYPES", {})
     config = email_types.get(email_type)
-    category = _config_value(config, "category", DEFAULT_UNSUBSCRIBE_CATEGORY)
-    return normalize_category(category)
+    category = normalize_category(_config_value(config, "category", DEFAULT_UNSUBSCRIBE_CATEGORY))
+    if category == ALL_CATEGORY:
+        # Dict configs skip EmailTypeConfig's own check.
+        raise ValueError(
+            f"Email type '{email_type}' uses the reserved category 'all'. 'all' means unsubscribed from "
+            "every email and cannot be used as an email type's category."
+        )
+    return category
 
 
 def should_skip_unsubscribed(email_type: str) -> bool:
