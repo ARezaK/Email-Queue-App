@@ -1,9 +1,15 @@
+from unittest.mock import Mock, patch
+
 from django.contrib.auth.models import User
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase, TransactionTestCase, override_settings
+from django.utils import timezone
 
-from email_queue.models import EmailUnsubscribe
+from email_queue.api import queue_email
+from email_queue.models import EmailUnsubscribe, QueuedEmail
+from email_queue.schemas import PasswordResetContext
+from email_queue.sending import send_queued_email
 from email_queue.types import ALL_CATEGORY, EmailTypeConfig
 from email_queue.unsubscribe import (
     get_email_category,
@@ -151,3 +157,89 @@ class RecordUnsubscribeReasonTest(TestCase):
     def test_unknown_reason_rejected(self):
         with self.assertRaisesMessage(ValueError, "reason"):
             record_unsubscribe("a@example.com", "marketing", reason="because")
+
+
+CONTEXT = {"user_name": "Test", "reset_link": "https://example.com/reset", "expires_hours": 24}
+RENDERED = {"subject": "Hello", "text_body": "Body text", "html_body": "<p>Body html</p>"}
+
+
+@override_settings(
+    DEFAULT_FROM_EMAIL="noreply@example.com",
+    EMAIL_QUEUE_BASE_URL="https://example.com",
+    EMAIL_QUEUE_TYPES={
+        "promo": EmailTypeConfig(subject="Promo", category="marketing", require_verified_email=False),
+        "receipt": EmailTypeConfig(
+            subject="Receipt",
+            category="notification",
+            require_verified_email=False,
+            skip_sending_if_unsubscribed=False,
+        ),
+    },
+    EMAIL_QUEUE_CONTEXT_SCHEMAS={"promo": PasswordResetContext, "receipt": PasswordResetContext},
+)
+class GeneralUnsubscribeEnforcementTest(TestCase):
+    def _queued(self, email_type="promo"):
+        return QueuedEmail.objects.create(
+            to_email="a@example.com", email_type=email_type, context=CONTEXT, scheduled_for=timezone.now()
+        )
+
+    def _send(self, queued_email):
+        mocked_email = Mock()
+        with patch("email_queue.sending.render_email", return_value=dict(RENDERED)) as mock_render, patch(
+            "email_queue.sending.EmailMultiAlternatives", return_value=mocked_email
+        ):
+            success = send_queued_email(queued_email)
+        queued_email.refresh_from_db()
+        return success, mock_render
+
+    def test_queue_skips_address_unsubscribed_from_all(self):
+        EmailUnsubscribe.objects.create(email="a@example.com", category="all", reason="bounce")
+
+        queued = queue_email(to_email="a@example.com", email_type="promo", context=CONTEXT)
+
+        self.assertEqual(queued.status, "skipped")
+        self.assertEqual(queued.failure_reason, "Recipient unsubscribed from all emails")
+
+    def test_queue_skip_text_for_category_row_unchanged(self):
+        EmailUnsubscribe.objects.create(email="a@example.com", category="marketing")
+
+        queued = queue_email(to_email="a@example.com", email_type="promo", context=CONTEXT)
+
+        self.assertEqual(queued.status, "skipped")
+        self.assertEqual(queued.failure_reason, "Recipient unsubscribed from marketing emails")
+
+    def test_queue_not_skipped_without_rows(self):
+        queued = queue_email(to_email="a@example.com", email_type="promo", context=CONTEXT)
+
+        self.assertEqual(queued.status, "queued")
+        self.assertEqual(queued.failure_reason, "")
+
+    def test_send_skips_when_all_row_added_after_queueing(self):
+        queued = self._queued()
+        EmailUnsubscribe.objects.create(email="a@example.com", category="all", reason="bounce")
+
+        success, mock_render = self._send(queued)
+
+        self.assertFalse(success)
+        self.assertEqual(queued.status, "skipped")
+        self.assertEqual(queued.failure_reason, "Recipient unsubscribed from all emails")
+        mock_render.assert_not_called()
+
+    def test_send_skip_text_for_category_row_unchanged(self):
+        queued = self._queued()
+        EmailUnsubscribe.objects.create(email="a@example.com", category="marketing")
+
+        success, _ = self._send(queued)
+
+        self.assertFalse(success)
+        self.assertEqual(queued.failure_reason, "Recipient unsubscribed from marketing emails")
+
+    def test_type_that_ignores_unsubscribes_still_queues_and_sends(self):
+        EmailUnsubscribe.objects.create(email="a@example.com", category="all", reason="bounce")
+
+        queued = queue_email(to_email="a@example.com", email_type="receipt", context=CONTEXT)
+        self.assertEqual(queued.status, "queued")
+
+        success, _ = self._send(queued)
+        self.assertTrue(success)
+        self.assertEqual(queued.status, "sent")

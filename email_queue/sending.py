@@ -15,9 +15,10 @@ from .rendering import render_email
 from .unsubscribe import (
     add_unsubscribe_footer,
     get_email_category,
-    is_unsubscribed,
     should_include_unsubscribe_footer,
     should_skip_unsubscribed,
+    unsubscribe_match,
+    unsubscribe_skip_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,13 +66,12 @@ def send_queued_email(queued_email) -> bool:
         include_unsubscribe_footer = should_include_unsubscribe_footer(queued_email.email_type)
         unsubscribe_category = get_email_category(queued_email.email_type)
 
-        if unsubscribe_enforced and is_unsubscribed(queued_email.to_email, unsubscribe_category):
+        matched = unsubscribe_match(queued_email.to_email, unsubscribe_category) if unsubscribe_enforced else None
+        if matched:
             queued_email.status = "skipped"
-            queued_email.failure_reason = f"Recipient unsubscribed from {unsubscribe_category.replace('_', ' ')} emails"
+            queued_email.failure_reason = unsubscribe_skip_text(matched)
             queued_email.save(update_fields=["status", "failure_reason"])
-            logger.info(
-                f"Skipped email {queued_email.id} - recipient unsubscribed from {unsubscribe_category} emails"
-            )
+            logger.info(f"Skipped email {queued_email.id} - {queued_email.failure_reason}")
             return False
 
         # Check user eligibility (if we can find a user with this email)
