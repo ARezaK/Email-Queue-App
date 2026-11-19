@@ -1,5 +1,7 @@
+from django import forms
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.auth import get_user_model
 from django.shortcuts import render
 from django.urls import path
 from django.utils.html import format_html
@@ -7,7 +9,13 @@ from django.utils.html import format_html
 from .models import EmailClick, EmailReplyEvent, EmailUnsubscribe, QueuedEmail
 from .rendering import render_email
 from .sending import send_queued_email
-from .unsubscribe import add_unsubscribe_footer, get_email_category, should_include_unsubscribe_footer
+from .unsubscribe import (
+    add_unsubscribe_footer,
+    get_email_category,
+    normalize_category,
+    normalize_email,
+    should_include_unsubscribe_footer,
+)
 
 
 @admin.register(QueuedEmail)
@@ -238,13 +246,44 @@ class EmailClickAdmin(admin.ModelAdmin):
         return True
 
 
+class EmailUnsubscribeAdminForm(forms.ModelForm):
+    class Meta:
+        model = EmailUnsubscribe
+        fields = ["user", "email", "category", "reason"]
+        help_texts = {
+            "category": "The email category, or 'all' to stop every email to this address.",
+            "user": "Optional. Left blank, it is filled in from the address when a user has it.",
+        }
+
+    # Normalising here, before validation, lets Django's own unique check catch a duplicate that
+    # differs only in casing or spacing and show a form error instead of a database error.
+    def clean_email(self):
+        return normalize_email(self.cleaned_data.get("email"))
+
+    def clean_category(self):
+        return normalize_category(self.cleaned_data.get("category"))
+
+
 @admin.register(EmailUnsubscribe)
 class EmailUnsubscribeAdmin(admin.ModelAdmin):
-    list_display = ["id", "email", "category", "user", "unsubscribed_at"]
-    list_filter = ["category", "unsubscribed_at"]
+    form = EmailUnsubscribeAdminForm
+    list_display = ["id", "email", "category", "reason", "user", "unsubscribed_at"]
+    list_filter = ["reason", "category", "unsubscribed_at"]
     search_fields = ["email", "user__email", "user__username", "category"]
+    autocomplete_fields = ["user"]
     readonly_fields = ["created_at", "unsubscribed_at"]
     date_hierarchy = "unsubscribed_at"
+
+    def get_changeform_initial_data(self, request):
+        # Rows added by hand start as "Added by staff"; the model default stays "link" for code.
+        initial = super().get_changeform_initial_data(request)
+        initial.setdefault("reason", EmailUnsubscribe.REASON_ADMIN)
+        return initial
+
+    def save_model(self, request, obj, form, change):
+        if obj.user_id is None:
+            obj.user = get_user_model().objects.filter(email__iexact=obj.email).first()
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(EmailReplyEvent)
