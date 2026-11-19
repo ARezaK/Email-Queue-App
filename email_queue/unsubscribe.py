@@ -97,7 +97,10 @@ def is_unsubscribed(email: str, category: str) -> bool:
 
 
 def unsubscribe_skip_text(match: str) -> str:
-    """The text stored on a skipped QueuedEmail for an unsubscribe_match() result."""
+    """The text stored on a skipped QueuedEmail for an unsubscribe_match() result.
+
+    `match` must be a non-None result of unsubscribe_match().
+    """
     if match == ALL_CATEGORY:
         return "Recipient unsubscribed from all emails"
     return f"Recipient unsubscribed from {match.replace('_', ' ')} emails"

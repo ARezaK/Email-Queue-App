@@ -281,6 +281,7 @@ class EmailUnsubscribeAdmin(admin.ModelAdmin):
         return initial
 
     def save_model(self, request, obj, form, change):
+        # Same lookup as record_unsubscribe(): when several users share the address, the oldest wins.
         if obj.user_id is None:
             obj.user = get_user_model().objects.filter(email__iexact=obj.email).first()
         super().save_model(request, obj, form, change)

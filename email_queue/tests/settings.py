@@ -2,8 +2,10 @@
 
 Usage: python -m django test email_queue.tests.test_unsubscribe --settings=email_queue.tests.settings
 
-Tests that need a host project's email types and templates (test_rendering, test_utm_tracking)
-do not pass with these settings; run them from a host project.
+Some modules do not pass with these settings and should be run from a host project:
+test_api, test_rendering and test_utm_tracking need a host project's email types and templates,
+and the concurrency test in test_send_queued_emails_command needs a database with real row
+locking (not SQLite).
 """
 
 SECRET_KEY = "email-queue-tests"

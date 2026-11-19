@@ -1,4 +1,4 @@
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 from django.urls import reverse
 
@@ -18,7 +18,7 @@ class EmailUnsubscribeAdminTest(TestCase):
         self.assertEqual(response.status_code, 200)
         form = response.context["adminform"].form
         self.assertEqual(form["reason"].value(), "admin")
-        self.assertContains(response, "to stop every email to this address")
+        self.assertIn("'all'", form.fields["category"].help_text)
 
     def test_add_normalises_and_links_user(self):
         jane = User.objects.create_user(username="jane", email="Jane@Example.com")
@@ -78,3 +78,49 @@ class EmailUnsubscribeAdminTest(TestCase):
         self.client.post(reverse("admin:email_queue_emailunsubscribe_delete", args=[row.pk]), {"post": "yes"})
 
         self.assertFalse(EmailUnsubscribe.objects.exists())
+
+    def test_query_string_reason_beats_the_admin_default(self):
+        response = self.client.get(self.add_url, {"reason": "bounce"})
+
+        self.assertEqual(response.context["adminform"].form["reason"].value(), "bounce")
+
+    def test_saving_an_existing_row_unchanged_is_not_a_duplicate(self):
+        row = EmailUnsubscribe.objects.create(email="jane@example.com", category="all", reason="bounce")
+        change_url = reverse("admin:email_queue_emailunsubscribe_change", args=[row.pk])
+
+        response = self.client.post(
+            change_url, {"email": "jane@example.com", "category": "all", "reason": "bounce", "user": ""}
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(EmailUnsubscribe.objects.count(), 1)
+
+    def test_changing_a_row_to_collide_with_another_is_a_form_error(self):
+        EmailUnsubscribe.objects.create(email="jane@example.com", category="all", reason="bounce")
+        other = EmailUnsubscribe.objects.create(email="jane@example.com", category="marketing")
+        change_url = reverse("admin:email_queue_emailunsubscribe_change", args=[other.pk])
+
+        response = self.client.post(
+            change_url, {"email": " JANE@example.com", "category": "All", "reason": "link", "user": ""}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already exists")
+        other.refresh_from_db()
+        self.assertEqual(other.category, "marketing")
+
+    def test_staff_with_only_view_and_add_can_add_a_row(self):
+        """The permissions an automated staff account gets: view + add here, view on users."""
+        limited = User.objects.create_user(username="limited", email="limited@example.com", is_staff=True)
+        limited.user_permissions.set(
+            Permission.objects.filter(codename__in=["view_emailunsubscribe", "add_emailunsubscribe", "view_user"])
+        )
+        jane = User.objects.create_user(username="jane", email="jane@example.com")
+        self.client.force_login(limited)
+
+        self.assertEqual(self.client.get(self.add_url).status_code, 200)
+        response = self.client.post(self.add_url, {"email": "jane@example.com", "category": "all", "reason": "bounce"})
+
+        self.assertEqual(response.status_code, 302)
+        row = EmailUnsubscribe.objects.get()
+        self.assertEqual((row.email, row.category, row.reason, row.user), ("jane@example.com", "all", "bounce", jane))

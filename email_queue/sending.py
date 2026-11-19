@@ -71,7 +71,9 @@ def send_queued_email(queued_email) -> bool:
             queued_email.status = "skipped"
             queued_email.failure_reason = unsubscribe_skip_text(matched)
             queued_email.save(update_fields=["status", "failure_reason"])
-            logger.info(f"Skipped email {queued_email.id} - {queued_email.failure_reason}")
+            logger.info(
+                f"Skipped email {queued_email.id} ({queued_email.email_type}) - {queued_email.failure_reason}"
+            )
             return False
 
         # Check user eligibility (if we can find a user with this email)
