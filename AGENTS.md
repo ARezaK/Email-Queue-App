@@ -19,6 +19,7 @@ Schema changes belong in `email_queue/migrations/`. Package metadata is in `setu
 - `python manage.py send_queued_emails --rate-limit=20 --max-retries=5 --retry-delay=60` runs worker with custom throughput/retry settings.
 - `python manage.py test email_queue` runs the full test suite.
 - `python manage.py test email_queue.tests.test_api` runs a focused module during iteration.
+- `python -m django test email_queue.tests.<module> --settings=email_queue.tests.settings` runs a test module standalone (no host project). `test_rendering` and `test_utm_tracking` need a host project.
 
 ## Coding Style & Naming Conventions
 Use Python 3 with 4-space indentation and PEP 8 style. Keep functions/modules focused and explicit (current code favors typed signatures and clear docstrings for public APIs).  

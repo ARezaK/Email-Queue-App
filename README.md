@@ -310,6 +310,33 @@ queue_email(
 )
 ```
 
+### Unsubscribing an address from everything
+
+A row with the reserved category `all` stops every email to that address, whatever its category:
+
+```python
+from email_queue.unsubscribe import record_unsubscribe
+
+record_unsubscribe("jane@example.com", "all", reason="bounce")
+```
+
+- Checked at queue time and again at send time, like category unsubscribes. The skipped email's
+  `failure_reason` reads "Recipient unsubscribed from all emails".
+- Email types with `skip_sending_if_unsubscribed=False` still send (use that for receipts and
+  password resets).
+- `all` cannot be an email type's `category`; configuring one raises `ValueError`.
+- Unsubscribe links and reply-stop keep recording the email's own category. `all` rows come from
+  the admin or from your own code.
+
+Every unsubscribe has a `reason`: `link` (the person used an unsubscribe link or replied; the
+default), `bounce` (their mail bounced) or `admin` (staff added it). A repeat unsubscribe keeps
+the first reason. Delete the row in the admin to resubscribe the address.
+
+Upgrading: run `python manage.py migrate email_queue` (adds the `reason` column; existing rows
+become `link`). Deploy the migration together with the new code: between applying it and the new
+code going live, an unsubscribe recorded by the old code fails, because the old code does not
+supply a reason.
+
 ## Reply-Stop (Auto-Stop on Reply)
 
 Reply-stop automatically cancels future queued emails when a recipient replies. This is useful for multi-step reminder campaigns where a reply indicates the user has engaged and further reminders are unnecessary.
@@ -627,14 +654,15 @@ python manage.py test email_queue.tests.test_api
 python manage.py test email_queue.tests.test_utm_tracking
 ```
 
-If testing this package standalone (without a host Django project), create a temporary settings module and run targeted tests:
+To run tests standalone (without a host Django project), use the bundled minimal settings:
 
 ```bash
-DJANGO_SETTINGS_MODULE=email_queue_test_settings python -m django test \
-  email_queue.tests.test_reply_autostop_config \
-  email_queue.tests.test_reply_stop \
-  email_queue.tests.test_sending_reply_stop -v 2
+python -m django test email_queue.tests.test_general_unsubscribe email_queue.tests.test_unsubscribe \
+  --settings=email_queue.tests.settings
 ```
+
+`test_rendering` and `test_utm_tracking` need a host project's email types and templates and do
+not pass standalone.
 
 ## Troubleshooting
 
