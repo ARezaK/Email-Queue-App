@@ -1,4 +1,6 @@
-from django.test import TestCase, override_settings
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TestCase, TransactionTestCase, override_settings
 
 from email_queue.models import EmailUnsubscribe
 from email_queue.types import ALL_CATEGORY, EmailTypeConfig
@@ -77,3 +79,38 @@ class ReservedCategoryTest(TestCase):
     @override_settings(EMAIL_QUEUE_TYPES={"promo": {"subject": "Hi", "category": "Marketing Emails"}})
     def test_dict_config_other_category_still_works(self):
         self.assertEqual(get_email_category("promo"), "marketing_emails")
+
+
+class UnsubscribeReasonFieldTest(TestCase):
+    def test_default_reason_is_link(self):
+        row = EmailUnsubscribe.objects.create(email="a@example.com", category="marketing")
+        self.assertEqual(row.reason, "link")
+
+    def test_reason_choices(self):
+        self.assertEqual(
+            [value for value, _label in EmailUnsubscribe.REASON_CHOICES],
+            ["link", "bounce", "admin"],
+        )
+        row = EmailUnsubscribe.objects.create(email="a@example.com", category="all", reason="bounce")
+        self.assertEqual(row.get_reason_display(), "Email bounced")
+
+
+class UnsubscribeReasonMigrationTest(TransactionTestCase):
+    """Rows that existed before 0006 read back with reason 'link'."""
+
+    def test_existing_rows_get_link(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([("email_queue", "0005_emailreplyevent")])
+        old_apps = executor.loader.project_state([("email_queue", "0005_emailreplyevent")]).apps
+        OldUnsubscribe = old_apps.get_model("email_queue", "EmailUnsubscribe")
+        OldUnsubscribe.objects.create(email="old@example.com", category="marketing")
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([("email_queue", "0006_emailunsubscribe_reason")])
+
+        self.assertEqual(EmailUnsubscribe.objects.get(email="old@example.com").reason, "link")
+
+    def tearDown(self):
+        # Leave the schema fully migrated for whatever test runs next.
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())

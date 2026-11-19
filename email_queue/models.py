@@ -99,9 +99,19 @@ class EmailUnsubscribe(models.Model):
     Track unsubscribe preferences by email category.
     """
 
+    REASON_LINK = "link"
+    REASON_BOUNCE = "bounce"
+    REASON_ADMIN = "admin"
+    REASON_CHOICES = [
+        (REASON_LINK, "Unsubscribe link or reply"),
+        (REASON_BOUNCE, "Email bounced"),
+        (REASON_ADMIN, "Added by staff"),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="email_unsubscribes")
     email = models.CharField(max_length=254, db_index=True)
     category = models.CharField(max_length=50, db_index=True)
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES, default=REASON_LINK, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     unsubscribed_at = models.DateTimeField(auto_now=True)
 
