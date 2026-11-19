@@ -661,8 +661,9 @@ python -m django test email_queue.tests.test_general_unsubscribe email_queue.tes
   --settings=email_queue.tests.settings
 ```
 
-`test_rendering` and `test_utm_tracking` need a host project's email types and templates and do
-not pass standalone.
+`test_api`, `test_rendering` and `test_utm_tracking` need a host project's email types and
+templates, and the concurrency test in `test_send_queued_emails_command` needs a database with
+real row locking (not SQLite), so those do not pass standalone.
 
 ## Troubleshooting
 
