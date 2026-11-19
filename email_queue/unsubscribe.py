@@ -5,6 +5,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.html import escape
 
 from .models import EmailUnsubscribe
+from .types import ALL_CATEGORY
 
 # Salt scopes Django's signing to the unsubscribe feature so tokens
 # from other signed workflows cannot be reused here.
@@ -66,11 +67,34 @@ def should_include_unsubscribe_footer(email_type: str) -> bool:
     return bool(include_footer)
 
 
+def unsubscribe_match(email: str, category: str) -> str | None:
+    """Which unsubscribe covers this address for this category: "all", the category, or None.
+
+    "all" wins when both rows exist.
+    """
+    normalized_category = normalize_category(category)
+    matched = set(
+        EmailUnsubscribe.objects.filter(
+            email=normalize_email(email),
+            category__in=[normalized_category, ALL_CATEGORY],
+        ).values_list("category", flat=True)
+    )
+    if ALL_CATEGORY in matched:
+        return ALL_CATEGORY
+    if normalized_category in matched:
+        return normalized_category
+    return None
+
+
 def is_unsubscribed(email: str, category: str) -> bool:
-    return EmailUnsubscribe.objects.filter(
-        email=normalize_email(email),
-        category=normalize_category(category),
-    ).exists()
+    return unsubscribe_match(email, category) is not None
+
+
+def unsubscribe_skip_text(match: str) -> str:
+    """The text stored on a skipped QueuedEmail for an unsubscribe_match() result."""
+    if match == ALL_CATEGORY:
+        return "Recipient unsubscribed from all emails"
+    return f"Recipient unsubscribed from {match.replace('_', ' ')} emails"
 
 
 def record_unsubscribe(email: str, category: str):

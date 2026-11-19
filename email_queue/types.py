@@ -4,6 +4,9 @@ AUTO_STOP_SCOPE_CATEGORY = "category"
 AUTO_STOP_SCOPE_EMAIL_TYPE = "email_type"
 AUTO_STOP_ALLOWED_SCOPES = {AUTO_STOP_SCOPE_CATEGORY, AUTO_STOP_SCOPE_EMAIL_TYPE}
 
+# Reserved unsubscribe category: a row with this category stops every email to the address.
+ALL_CATEGORY = "all"
+
 
 @dataclass(frozen=True)
 class EmailTypeConfig:
