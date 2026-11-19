@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase, TransactionTestCase, override_settings
@@ -7,6 +8,7 @@ from email_queue.types import ALL_CATEGORY, EmailTypeConfig
 from email_queue.unsubscribe import (
     get_email_category,
     is_unsubscribed,
+    record_unsubscribe,
     unsubscribe_match,
     unsubscribe_skip_text,
 )
@@ -114,3 +116,38 @@ class UnsubscribeReasonMigrationTest(TransactionTestCase):
         # Leave the schema fully migrated for whatever test runs next.
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+class RecordUnsubscribeReasonTest(TestCase):
+    def test_default_reason_is_link(self):
+        row = record_unsubscribe("a@example.com", "marketing")
+        self.assertEqual(row.reason, "link")
+
+    def test_reason_stored_on_create(self):
+        row = record_unsubscribe("A@Example.com", "all", reason="bounce")
+
+        self.assertEqual(row.email, "a@example.com")
+        self.assertEqual(row.category, "all")
+        self.assertEqual(row.reason, "bounce")
+
+    def test_first_reason_kept_on_repeat(self):
+        record_unsubscribe("a@example.com", "all", reason="bounce")
+        row = record_unsubscribe("a@example.com", "all", reason="link")
+
+        self.assertEqual(row.reason, "bounce")
+        self.assertEqual(EmailUnsubscribe.objects.filter(email="a@example.com", category="all").count(), 1)
+
+    def test_repeat_still_refreshes_user_and_time(self):
+        first = record_unsubscribe("a@example.com", "marketing")
+        self.assertIsNone(first.user)
+        user = User.objects.create_user(username="a", email="a@example.com")
+
+        again = record_unsubscribe("a@example.com", "marketing")
+
+        self.assertEqual(again.pk, first.pk)
+        self.assertEqual(again.user, user)
+        self.assertGreaterEqual(again.unsubscribed_at, first.unsubscribed_at)
+
+    def test_unknown_reason_rejected(self):
+        with self.assertRaisesMessage(ValueError, "reason"):
+            record_unsubscribe("a@example.com", "marketing", reason="because")

@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import IntegrityError, transaction
 
-from .models import EmailReplyEvent, QueuedEmail
+from .models import EmailReplyEvent, EmailUnsubscribe, QueuedEmail
 from .reply_stop import (
     AUTO_STOP_SCOPE_CATEGORY,
     AUTO_STOP_SCOPE_EMAIL_TYPE,
@@ -67,7 +67,7 @@ class ReplyStopService:
         if scope == AUTO_STOP_SCOPE_CATEGORY:
             # Use the current category mapping so behavior follows current config.
             category = get_email_category(token_email_type)
-            record_unsubscribe(token_email, category)
+            record_unsubscribe(token_email, category, reason=EmailUnsubscribe.REASON_LINK)
             cancelled_count = self._cancel_for_category(token_email, category)
             event.token_category = category
             return self._finish(

@@ -103,19 +103,30 @@ def unsubscribe_skip_text(match: str) -> str:
     return f"Recipient unsubscribed from {match.replace('_', ' ')} emails"
 
 
-def record_unsubscribe(email: str, category: str):
+def record_unsubscribe(email: str, category: str, reason: str = EmailUnsubscribe.REASON_LINK):
+    """Record that `email` is unsubscribed from `category` ("all" stops every email).
+
+    `reason` is stored when the row is created. A repeat call keeps the first reason and only
+    refreshes the linked user and the timestamp.
+    """
     normalized_email = normalize_email(email)
     normalized_category = normalize_category(category)
 
     if not normalized_email:
         raise ValueError("Email is required to unsubscribe")
+    if reason not in dict(EmailUnsubscribe.REASON_CHOICES):
+        allowed = ", ".join(value for value, _label in EmailUnsubscribe.REASON_CHOICES)
+        raise ValueError(f"Unknown unsubscribe reason '{reason}'. Allowed values: {allowed}")
 
     user = get_user_model().objects.filter(email__iexact=normalized_email).first()
-    unsubscribe, _ = EmailUnsubscribe.objects.update_or_create(
+    unsubscribe, created = EmailUnsubscribe.objects.get_or_create(
         email=normalized_email,
         category=normalized_category,
-        defaults={"user": user},
+        defaults={"user": user, "reason": reason},
     )
+    if not created:
+        unsubscribe.user = user
+        unsubscribe.save(update_fields=["user", "unsubscribed_at"])
     return unsubscribe
 
 

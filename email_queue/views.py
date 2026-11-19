@@ -6,6 +6,7 @@ from django.core import signing
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from .models import EmailUnsubscribe
 from .reply_stop_service import ReplyStopService
 from .unsubscribe import decode_unsubscribe_token, record_unsubscribe
 
@@ -16,7 +17,7 @@ def unsubscribe_view(request, token: str):
     except signing.BadSignature:
         return HttpResponseBadRequest("Invalid unsubscribe link.")
 
-    record_unsubscribe(payload["email"], payload["category"])
+    record_unsubscribe(payload["email"], payload["category"], reason=EmailUnsubscribe.REASON_LINK)
     return HttpResponse("You have been unsubscribed")
 
 
