@@ -241,10 +241,6 @@ class EmailClickAdmin(admin.ModelAdmin):
         """Disable manual creation of click records"""
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        """Allow deletion for cleanup"""
-        return True
-
 
 class EmailUnsubscribeAdminForm(forms.ModelForm):
     class Meta:
