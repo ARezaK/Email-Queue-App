@@ -332,10 +332,11 @@ record_unsubscribe("jane@example.com", "all", reason="bounce")
   the admin or from your own code.
 
 Every unsubscribe has a `reason`: `link` (the person used an unsubscribe link or replied; the
-default), `bounce` (their mail bounced) or `admin` (staff added it). A repeat unsubscribe keeps
+default), `bounce` (their mail bounced), `admin` (staff added it) or `account_closed` (the host
+project recorded it when the person closed their account). A repeat unsubscribe keeps
 the first reason. Delete the row in the admin to resubscribe the address.
 
-Upgrading: run `python manage.py migrate email_queue` (adds the `reason` column; existing rows
+Upgrading: run `python manage.py migrate email_queue` (adds the `reason` column and its choices; existing rows
 become `link`). Deploy the migration together with the new code: between applying it and the new
 code going live, an unsubscribe recorded by the old code fails, because the old code does not
 supply a reason.

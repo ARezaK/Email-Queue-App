@@ -106,7 +106,7 @@ class UnsubscribeReasonFieldTest(TestCase):
     def test_reason_choices(self):
         self.assertEqual(
             [value for value, _label in EmailUnsubscribe.REASON_CHOICES],
-            ["link", "bounce", "admin"],
+            ["link", "bounce", "admin", "account_closed"],
         )
         row = EmailUnsubscribe.objects.create(email="a@example.com", category="all", reason="bounce")
         self.assertEqual(row.get_reason_display(), "Email bounced")
@@ -302,3 +302,11 @@ class UnsubscribeLinkReasonTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(EmailUnsubscribe.objects.get(email="a@example.com", category="marketing").reason, "link")
+
+
+class AccountClosedReasonTest(TestCase):
+    def test_account_closed_is_an_accepted_reason(self):
+        row = record_unsubscribe("a@example.com", "all", reason="account_closed")
+
+        self.assertEqual(row.reason, EmailUnsubscribe.REASON_ACCOUNT_CLOSED)
+        self.assertEqual(row.get_reason_display(), "Account closed")

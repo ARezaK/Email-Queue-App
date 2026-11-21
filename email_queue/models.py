@@ -102,10 +102,12 @@ class EmailUnsubscribe(models.Model):
     REASON_LINK = "link"
     REASON_BOUNCE = "bounce"
     REASON_ADMIN = "admin"
+    REASON_ACCOUNT_CLOSED = "account_closed"
     REASON_CHOICES = [
         (REASON_LINK, "Unsubscribe link or reply"),
         (REASON_BOUNCE, "Email bounced"),
         (REASON_ADMIN, "Added by staff"),
+        (REASON_ACCOUNT_CLOSED, "Account closed"),
     ]
 
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="email_unsubscribes")
