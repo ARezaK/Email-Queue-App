@@ -268,6 +268,9 @@ EMAIL_QUEUE_BASED_URL = "https://your-domain.com"
 - Clicking the link records preference in `EmailUnsubscribe`.
 - Future emails in that category are skipped (`status="skipped"`).
 - Other categories continue to send normally.
+- An email type with `skip_sending_if_unsubscribed=False` ignores unsubscribes, with one exception: it is
+  still skipped ("Recipient address bounced") for an address that has an `all` unsubscribe with reason
+  `bounce`, because nobody can receive it there.
 
 ### 6.1 Unsubscribe Examples
 

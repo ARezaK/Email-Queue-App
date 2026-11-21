@@ -96,6 +96,28 @@ def is_unsubscribed(email: str, category: str) -> bool:
     return unsubscribe_match(email, category) is not None
 
 
+BOUNCED_SKIP_TEXT = "Recipient address bounced"
+
+
+def has_bounced(email: str) -> bool:
+    """The address has an 'all' unsubscribe recorded because mail to it bounced.
+
+    Email types that ignore unsubscribes (skip_sending_if_unsubscribed=False) are still not sent to
+    such an address: there is nobody there to receive them.
+    """
+    return EmailUnsubscribe.objects.filter(
+        email=normalize_email(email), category=ALL_CATEGORY, reason=EmailUnsubscribe.REASON_BOUNCE
+    ).exists()
+
+
+def skip_text_for(email: str, email_type: str) -> str:
+    """Why an email of this type must not go to this address, or "" when it may be sent."""
+    if should_skip_unsubscribed(email_type):
+        match = unsubscribe_match(email, get_email_category(email_type))
+        return unsubscribe_skip_text(match) if match else ""
+    return BOUNCED_SKIP_TEXT if has_bounced(email) else ""
+
+
 def unsubscribe_skip_text(match: str) -> str:
     """The text stored on a skipped QueuedEmail for an unsubscribe_match() result.
 

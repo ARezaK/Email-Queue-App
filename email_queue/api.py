@@ -8,7 +8,7 @@ from django.utils import timezone
 from .models import QueuedEmail
 from .schemas import validate_email_context
 from .sending import send_queued_email
-from .unsubscribe import get_email_category, should_skip_unsubscribed, unsubscribe_match, unsubscribe_skip_text
+from .unsubscribe import skip_text_for
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +70,8 @@ def queue_email(
     if scheduled_for is None:
         scheduled_for = timezone.now()
 
-    category = get_email_category(email_type)
-    unsubscribe_enforced = should_skip_unsubscribed(email_type)
-    matched = unsubscribe_match(to_email, category) if unsubscribe_enforced else None
-    is_recipient_unsubscribed = matched is not None
-    unsubscribe_reason = unsubscribe_skip_text(matched) if matched else ""
+    unsubscribe_reason = skip_text_for(to_email, email_type)
+    is_recipient_unsubscribed = bool(unsubscribe_reason)
 
     # Try to create email (idempotent - returns existing if duplicate)
     try:

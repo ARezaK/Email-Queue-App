@@ -260,8 +260,30 @@ class GeneralUnsubscribeEnforcementTest(TestCase):
         self.assertFalse(success)
         self.assertEqual(queued.failure_reason, "Recipient unsubscribed from marketing emails")
 
-    def test_type_that_ignores_unsubscribes_still_queues_and_sends(self):
+    def test_type_that_ignores_unsubscribes_is_not_queued_to_a_bounced_address(self):
         EmailUnsubscribe.objects.create(email="a@example.com", category="all", reason="bounce")
+
+        queued = queue_email(to_email="A@Example.com", email_type="receipt", context=CONTEXT)
+
+        self.assertEqual(queued.status, "skipped")
+        self.assertEqual(queued.failure_reason, "Recipient address bounced")
+
+    def test_type_that_ignores_unsubscribes_is_not_sent_when_the_address_bounces_after_queueing(self):
+        queued = self._queued("receipt")
+        EmailUnsubscribe.objects.create(email="a@example.com", category="all", reason="bounce")
+
+        success, mock_render, mocked_email = self._send(queued)
+
+        self.assertFalse(success)
+        self.assertEqual(queued.status, "skipped")
+        self.assertEqual(queued.failure_reason, "Recipient address bounced")
+        mock_render.assert_not_called()
+        mocked_email.send.assert_not_called()
+
+    def test_type_that_ignores_unsubscribes_still_queues_and_sends(self):
+        # The person opted out of everything (link or staff), but the address works: must-send mail still goes.
+        EmailUnsubscribe.objects.create(email="a@example.com", category="all", reason="link")
+        EmailUnsubscribe.objects.create(email="a@example.com", category="notification", reason="bounce")
 
         queued = queue_email(to_email="a@example.com", email_type="receipt", context=CONTEXT)
         self.assertEqual(queued.status, "queued")

@@ -16,9 +16,7 @@ from .unsubscribe import (
     add_unsubscribe_footer,
     get_email_category,
     should_include_unsubscribe_footer,
-    should_skip_unsubscribed,
-    unsubscribe_match,
-    unsubscribe_skip_text,
+    skip_text_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,14 +60,13 @@ def send_queued_email(queued_email) -> bool:
             logger.info(f"Skipped expired email {queued_email.id} ({queued_email.email_type})")
             return False
 
-        unsubscribe_enforced = should_skip_unsubscribed(queued_email.email_type)
         include_unsubscribe_footer = should_include_unsubscribe_footer(queued_email.email_type)
         unsubscribe_category = get_email_category(queued_email.email_type)
 
-        matched = unsubscribe_match(queued_email.to_email, unsubscribe_category) if unsubscribe_enforced else None
-        if matched:
+        skip_text = skip_text_for(queued_email.to_email, queued_email.email_type)
+        if skip_text:
             queued_email.status = "skipped"
-            queued_email.failure_reason = unsubscribe_skip_text(matched)
+            queued_email.failure_reason = skip_text
             queued_email.save(update_fields=["status", "failure_reason"])
             logger.info(
                 f"Skipped email {queued_email.id} ({queued_email.email_type}) - {queued_email.failure_reason}"
